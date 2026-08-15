@@ -6,16 +6,16 @@ import pandas as pd
 from datetime import datetime
 
 # ---------------------------------------------------------
-# 1. PAGE CONFIG & M&S LUXURY CSS INJECTION
+# 1. PAGE CONFIG & LUXURY CSS INJECTION
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="M&S Food | Smart Pantry",
+    page_title="Smart Pantry | Food & Meal Planner",
     page_icon="🛍️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom M&S Food Aesthetic CSS
+# Custom Aesthetic CSS
 ms_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap');
@@ -27,7 +27,7 @@ ms_css = """
         color: #1E1E1E;
     }
 
-    /* M&S Header Banner */
+    /* Header Banner */
     .ms-header {
         background-color: #003B25;
         color: #FFFFFF;
@@ -40,7 +40,7 @@ ms_css = """
     }
     .ms-brand {
         font-family: 'Playfair Display', serif;
-        font-size: 32px;
+        font-size: 28px;
         font-weight: 600;
         letter-spacing: 4px;
         margin: 0;
@@ -51,7 +51,7 @@ ms_css = """
         text-transform: uppercase;
         letter-spacing: 3px;
         color: #C5A059;
-        margin-top: 4px;
+        margin-top: 6px;
         font-weight: 500;
     }
 
@@ -253,12 +253,12 @@ def lookup_barcode(barcode_str):
     
     for test_code in [barcode_clean, barcode_clean.zfill(13)]:
         url = f"https://world.openfoodfacts.org/api/v2/product/{test_code}.json"
-        headers = {"User-Agent": "MSFoodPantryApp/1.0"}
+        headers = {"User-Agent": "SmartPantryApp/1.0"}
         try:
             res = requests.get(url, headers=headers, timeout=3).json()
             if res.get("status") == 1:
                 product = res.get("product", {})
-                name = product.get("product_name") or product.get("product_name_en") or f"M&S Product ({barcode_str})"
+                name = product.get("product_name") or product.get("product_name_en") or f"Product ({barcode_str})"
                 categories = product.get("categories_tags", [])
                 
                 cat = "ready_meal"
@@ -273,12 +273,12 @@ def lookup_barcode(barcode_str):
         except Exception:
             pass
             
-    return f"M&S Selection ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
+    return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
 def generate_smart_recipes(inventory):
     """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
-        return "Your M&S Pantry is empty! Add items to generate recipe inspirations."
+        return "Your Pantry is empty! Add items to generate recipe inspirations."
     
     sorted_items = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
     expiring_soon = [i["name"] for i in sorted_items[:3]]
@@ -289,7 +289,7 @@ def generate_smart_recipes(inventory):
     
     recipes = []
     if meats and produce:
-        recipes.append(f"**1. M&S Pan-Seared {meats[0]} with Fresh {produce[0]}**\n* Prioritizing: {meats[0]}, {produce[0]}\n* *Chef's Note:* Sear {meats[0]} over medium-high heat; toss {produce[0]} in olive oil and roast gently.")
+        recipes.append(f"**1. Pan-Seared {meats[0]} with Fresh {produce[0]}**\n* Prioritizing: {meats[0]}, {produce[0]}\n* *Chef's Note:* Sear {meats[0]} over medium-high heat; toss {produce[0]} in olive oil and roast gently.")
     if meats:
         recipes.append(f"**2. Premium {meats[0]} Gourmet Skillet**\n* Prioritizing: {meats[0]}\n* *Chef's Note:* Pair {meats[0]} with roasted potatoes and a splash of red wine reduction.")
     if produce or dairy:
@@ -298,14 +298,14 @@ def generate_smart_recipes(inventory):
         recipes.append(f"**3. Fresh {prod_str.title()} & {dairy_str.title()} Salad Bowl**\n* Prioritizing: {prod_str}, {dairy_str}\n* *Chef's Note:* Dress {prod_str} with extra virgin olive oil and crumble {dairy_str} over top.")
 
     if not recipes:
-        recipes.append(f"**1. M&S Quick Chef's Special**\n* Prioritizing: {', '.join(expiring_soon)}\n* *Chef's Note:* Gently sauté earliest expiring ingredients together with herbs.")
+        recipes.append(f"**1. Quick Chef's Special**\n* Prioritizing: {', '.join(expiring_soon)}\n* *Chef's Note:* Gently sauté earliest expiring ingredients together with herbs.")
 
-    out = "### 🍴 M&S Inspired Recipes (Prioritizing Earliest Expirations):\n\n"
+    out = "### 🍴 Inspired Recipes (Prioritizing Earliest Expirations):\n\n"
     out += "\n\n---\n\n".join(recipes)
     return out
 
 def render_visual_fridge(inventory):
-    """Renders M&S luxury visual representation of pantry/fridge zones."""
+    """Renders visual representation of pantry/fridge zones."""
     top_shelf = [i for i in inventory if i.get("category") in ["dairy", "ready_meal"]]
     bottom_shelf = [i for i in inventory if i.get("category") == "meat"]
     crisper = [i for i in inventory if i.get("category") == "produce"]
@@ -353,7 +353,7 @@ def render_visual_fridge(inventory):
         box-shadow: 0 8px 24px rgba(0, 59, 37, 0.08);">
         
         <div style="text-align: center; border-bottom: 1px solid #E0E0E0; padding-bottom: 10px; margin-bottom: 15px;">
-            <span style="font-family: 'Playfair Display', serif; font-size: 16px; letter-spacing: 2px; color: #003B25; font-weight: 600;">M&S CHILLED PANTRY</span>
+            <span style="font-family: 'Playfair Display', serif; font-size: 16px; letter-spacing: 2px; color: #003B25; font-weight: 600;">CHILLED PANTRY</span>
         </div>
 
         <div style="background: #F8F9F6; border-left: 4px solid #C5A059; padding: 14px; min-height: 85px; border-radius: 6px; margin-bottom: 12px;">
@@ -379,12 +379,12 @@ def render_visual_fridge(inventory):
 # ---------------------------------------------------------
 st.markdown("""
 <div class="ms-header">
-    <div class="ms-brand">M&S</div>
-    <div class="ms-subbrand">FOOD &bull; SMART PANTRY & MEAL PLANNER</div>
+    <div class="ms-brand">SMART PANTRY</div>
+    <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
 </div>
 """, unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 M&S Chilled Pantry", "🍴 Gourmet Meal Planner"])
+tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
 
 # --- TAB 1: SHOPPING & SCANNING ---
 with tab1:
@@ -392,7 +392,7 @@ with tab1:
     
     with col1:
         st.subheader("1. Hands-Free Scanner")
-        st.caption("Point camera at barcode — items auto-save to your M&S Pantry.")
+        st.caption("Point camera at barcode — items auto-save to your Pantry.")
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
@@ -406,7 +406,7 @@ with tab1:
             st.session_state.inventory.append({
                 "name": item_name,
                 "category": category,
-                "source": "M&S",
+                "source": "Scan",
                 "barcode": scanned_code,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
@@ -433,10 +433,10 @@ with tab1:
                 st.success(f"Added: **{name}**")
 
     with col2:
-        st.subheader("2. M&S Butcher Selection")
+        st.subheader("2. Butcher Selection")
         st.caption("Add fresh butcher cuts directly to your bottom shelf")
         
-        butcher_item = st.text_input("Meat Cut Name (e.g., M&S Ribeye Steak, Minced Beef):")
+        butcher_item = st.text_input("Meat Cut Name (e.g., Ribeye Steak, Minced Beef):")
         butcher_exp = st.date_input("Use-By Date:", datetime.today(), key="butcher_exp_date")
         
         if st.button("Add Meat Selection"):
@@ -464,7 +464,7 @@ with tab2:
             st.session_state.last_processed_code = None
             st.rerun()
     else:
-        st.info("Your M&S Pantry is currently empty! Use the Trolley Scanner to add fresh items.")
+        st.info("Your Pantry is currently empty! Use the Trolley Scanner to add fresh items.")
 
 # --- TAB 3: MEAL PLANNER ---
 with tab3:
