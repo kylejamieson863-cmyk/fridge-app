@@ -28,7 +28,7 @@ def lookup_barcode(barcode_str):
         res = requests.get(url, timeout=5).json()
         if res.get("status") == 1:
             product = res.get("product", {})
-            name = product.get("product_name") or product.get("product_name_en") or f"Item {barcode_str}"
+            name = product.get("product_name") or product.get("product_name_en") or f"M&S Item ({barcode_str})"
             categories = product.get("categories_tags", [])
             
             cat = "ready_meal"
@@ -161,7 +161,25 @@ def render_visual_fridge(inventory):
     st.html(fridge_html)
 
 # ---------------------------------------------------------
-# 3. INTERFACE TABS
+# 3. AUTOMATIC BARCODE SCAN CATCHER
+# ---------------------------------------------------------
+if "scanned" in st.query_params:
+    scanned_code = st.query_params["scanned"]
+    del st.query_params["scanned"] # Clear parameter immediately
+    
+    name, cat = lookup_barcode(scanned_code)
+    
+    # Auto-add item to session state
+    st.session_state.inventory.append({
+        "name": name,
+        "category": cat,
+        "source": "M&S",
+        "expiry_date": datetime.today().strftime("%Y-%m-%d")
+    })
+    st.toast(f"✅ Auto-saved: **{name}**", icon="🛒")
+
+# ---------------------------------------------------------
+# 4. INTERFACE TABS
 # ---------------------------------------------------------
 st.title("🥩 Smart Fridge & Meal Planner")
 
@@ -175,7 +193,7 @@ with tab1:
     
     with col1:
         st.subheader("1. M&S Barcode Scanner")
-        st.caption("Point camera at barcode to automatically add item")
+        st.caption("Point camera at barcode — it automatically saves instantly!")
         
         scanner_code = """
         <style>
@@ -211,8 +229,16 @@ with tab1:
         <div id="reader"></div>
         <script src="https://unpkg.com/html5-qrcode"></script>
         <script>
+            let isProcessing = false;
+            
             function onScanSuccess(decodedText, decodedResult) {
-                window.parent.postMessage({type: 'streamlit:setComponentValue', value: decodedText}, '*');
+                if (isProcessing) return;
+                isProcessing = true;
+                
+                // Instantly send barcode to Streamlit query params to trigger auto-save
+                const parentUrl = new URL(window.parent.location.href);
+                parentUrl.searchParams.set("scanned", decodedText);
+                window.parent.location.href = parentUrl.href;
             }
             
             const html5QrCode = new Html5Qrcode("reader");
@@ -244,10 +270,12 @@ with tab1:
         """
         scanned_code = components.html(scanner_code, height=350)
         
+        st.divider()
+        st.caption("Manual Fallback:")
         barcode_input = st.text_input("Or enter barcode manually:", key="manual_barcode")
         item_exp = st.date_input("Use-By Date:", datetime.today())
         
-        if st.button("Add Scanned Item"):
+        if st.button("Add Manual Barcode"):
             if barcode_input:
                 name, cat = lookup_barcode(barcode_input)
                 st.session_state.inventory.append({
