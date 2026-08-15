@@ -110,18 +110,24 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. USER AUTHENTICATION SETUP
+# 2. USER AUTHENTICATION SETUP (VERSION SAFE)
 # ---------------------------------------------------------
-# Configure accounts for you and your friends here
+try:
+    pw1_hash = stauth.Hasher.hash("password123")
+    pw2_hash = stauth.Hasher.hash("friendpassword")
+except Exception:
+    pw1_hash = stauth.Hasher(["password123"]).generate()[0]
+    pw2_hash = stauth.Hasher(["friendpassword"]).generate()[0]
+
 credentials = {
     "usernames": {
         "user1": {
             "name": "Your Account",
-            "password": stauth.Hasher(["password123"]).generate()[0]
+            "password": pw1_hash
         },
         "friend1": {
             "name": "Friend's Account",
-            "password": stauth.Hasher(["friendpassword"]).generate()[0]
+            "password": pw2_hash
         }
     }
 }
@@ -133,17 +139,19 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-authenticator.login("Login to Smart Pantry", "main")
+try:
+    authenticator.login()
+except Exception:
+    authenticator.login("Login to Smart Pantry", "main")
 
-if st.session_state["authentication_status"] is False:
+if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
-elif st.session_state["authentication_status"] is None:
+elif st.session_state.get("authentication_status") is None:
     st.warning("Please enter your username and password to access your private pantry.")
     st.stop()
 
-# Isolated User Session Data
-current_username = st.session_state["username"]
+current_username = st.session_state.get("username")
 
 if "private_inventories" not in st.session_state:
     st.session_state.private_inventories = {}
@@ -383,12 +391,17 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Top Bar with Logged In User and Logout Button
 top_col1, top_col2 = st.columns([4, 1])
 with top_col1:
-    st.write(f"Logged in as: **{st.session_state['name']}**")
+    user_display = st.session_state.get("name", current_username)
+    st.write(f"Logged in as: **{user_display}**")
 with top_col2:
-    authenticator.logout("Logout", "main")
+    try:
+        authenticator.logout("Logout", "main")
+    except Exception:
+        if st.button("Logout"):
+            st.session_state.clear()
+            st.rerun()
 
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
 
@@ -500,7 +513,7 @@ with tab1:
 
 # --- TAB 2: INTERACTIVE VISUAL CHILLED PANTRY ---
 with tab2:
-    st.subheader(f"🧊 Your Private Chilled Pantry")
+    st.subheader("🧊 Your Private Chilled Pantry")
     st.caption("Click any item button below to log usage or inspect detailed nutrition info.")
     
     if active_inv:
