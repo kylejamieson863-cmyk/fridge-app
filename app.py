@@ -4,7 +4,9 @@ import streamlit.components.v1 as components
 import requests
 import pandas as pd
 import re
+import io
 from datetime import datetime
+from PIL import Image, ImageEnhance
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIG & LUXURY CSS INJECTION
@@ -276,17 +278,38 @@ def lookup_barcode(barcode_str):
             
     return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
+def preprocess_receipt_image(image_bytes):
+    """Grayscales, boosts contrast, and crops off price column (right 35%)."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("L")
+    
+    # Increase contrast for thermal paper
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(2.0)
+    
+    # Crop right 35% where prices, tax codes, and totals live
+    width, height = img.size
+    crop_box = (0, 0, int(width * 0.65), height)
+    cropped_img = img.crop(crop_box)
+    
+    # Save processed image to byte buffer
+    buffer = io.BytesIO()
+    cropped_img.save(buffer, format="JPEG")
+    return buffer.getvalue()
+
 def process_receipt_image(image_bytes):
-    """Processes receipt photos via free OCR API and cleans line items."""
+    """Processes receipt photos with image cropping and smart line cleaning."""
     try:
+        # Preprocess photo to isolate product names
+        clean_bytes = preprocess_receipt_image(image_bytes)
+        
         url = "https://api.ocr.space/parse/image"
         payload = {
-            'apikey': 'helloworld', # Free public key
+            'apikey': 'helloworld',
             'language': 'eng',
-            'isTable': True,
+            'OCREngine': '2',
         }
-        files = [('file', ('receipt.jpg', image_bytes, 'image/jpeg'))]
-        response = requests.post(url, data=payload, files=files, timeout=10).json()
+        files = [('file', ('receipt.jpg', clean_bytes, 'image/jpeg'))]
+        response = requests.post(url, data=payload, files=files, timeout=12).json()
         
         parsed_results = response.get('ParsedResults', [])
         if not parsed_results:
@@ -295,43 +318,46 @@ def process_receipt_image(image_bytes):
         raw_text = parsed_results[0].get('ParsedText', '')
         lines = raw_text.split('\r\n')
         
-        # Keywords to filter out store metadata, payment info, and totals
+        # Keywords to ignore store metadata, dates, and non-food lines
         ignore_keywords = [
             "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard", 
             "card", "balance", "thank", "receipt", "store", "tel", "date", "time", 
-            "savings", "discount", "auth", "merchant", "pound", "£", "http"
+            "savings", "discount", "auth", "merchant", "pound", "http", "marks", "spencer",
+            "manager", "street", "lane", "road", "tel:", "order", "server", "table"
         ]
         
         extracted_items = []
         for line in lines:
             clean_line = line.strip()
+            
+            # Skip short noise or empty lines
             if not clean_line or len(clean_line) < 3:
                 continue
                 
             line_lower = clean_line.lower()
             
-            # Skip non-item lines
-            if any(k in line_lower for k in ignore_keywords) or re.search(r'\d{2}/\d{2}/\d{2}', line):
+            # Skip metadata lines or pure numbers
+            if any(k in line_lower for k in ignore_keywords) or clean_line.isdigit():
                 continue
                 
-            # Clean trailing prices (e.g. "CHICKEN BREAST 4.50" -> "CHICKEN BREAST")
-            cleaned_item = re.sub(r'[\d£\.]+$', '', clean_line).strip()
+            # Strip out price numbers or symbols lingering on the line
+            cleaned_item = re.sub(r'[\d£\$\.\,]+', '', clean_line).strip()
             
-            if len(cleaned_item) > 2 and not cleaned_item.isdigit():
-                # Determine category
+            if len(cleaned_item) >= 3:
+                # Category Detection
                 cat = "ready_meal"
                 item_lower = cleaned_item.lower()
-                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat"]):
+                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish"]):
                     cat = "meat"
-                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt"]):
+                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar"]):
                     cat = "dairy"
-                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org"]):
+                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "berry", "fruit"]):
                     cat = "produce"
                     
                 extracted_items.append({"name": cleaned_item.title(), "category": cat})
                 
         return extracted_items
-    except Exception:
+    except Exception as e:
         return []
 
 def generate_smart_recipes(inventory):
@@ -493,14 +519,14 @@ with tab1:
 
     with col2:
         st.subheader("2. Receipt OCR Photo Scanner")
-        st.caption("Snap a photo of your paper receipt to import items")
+        st.caption("Snap a clear, straight photo of your receipt items")
         
         receipt_photo = st.file_uploader("Upload Receipt Image:", type=["jpg", "png", "jpeg"], key="receipt_upload")
         receipt_date = st.date_input("Use-By Date for Receipt Items:", datetime.today(), key="receipt_exp_date")
         
         if receipt_photo:
             if st.button("📄 Extract Items From Receipt"):
-                with st.spinner("Processing receipt..."):
+                with st.spinner("Cropping prices & reading items..."):
                     img_bytes = receipt_photo.getvalue()
                     items_found = process_receipt_image(img_bytes)
                     
