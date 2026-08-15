@@ -90,7 +90,7 @@ ms_css = """
         font-size: 13px !important;
         letter-spacing: 1px !important;
         text-transform: uppercase !important;
-        padding: 10px 20px !important;
+        padding: 8px 16px !important;
         transition: all 0.2s ease !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
@@ -98,10 +98,6 @@ ms_css = """
         background-color: #C5A059 !important;
         border-color: #C5A059 !important;
         color: #1E1E1E !important;
-    }
-
-    div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column"] {
-        border-radius: 12px;
     }
 
     input, select {
@@ -188,16 +184,29 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 3. SESSION STATE & LOGIC
+# 3. SESSION STATE & MULTI-USER MANAGEMENT
 # ---------------------------------------------------------
-if "inventory" not in st.session_state:
-    st.session_state.inventory = []
+if "user_inventories" not in st.session_state:
+    st.session_state.user_inventories = {
+        "Default Profile": []
+    }
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = "Default Profile"
 
 if "last_processed_code" not in st.session_state:
     st.session_state.last_processed_code = None
 
+if "staged_receipt_items" not in st.session_state:
+    st.session_state.staged_receipt_items = []
+
+def get_active_inventory():
+    return st.session_state.user_inventories[st.session_state.current_user]
+
 def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
+    default_nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
+    
     for test_code in [barcode_clean, barcode_clean.zfill(13)]:
         url = f"https://world.openfoodfacts.org/api/v2/product/{test_code}.json"
         headers = {"User-Agent": "SmartPantryApp/1.0"}
@@ -208,6 +217,15 @@ def lookup_barcode(barcode_str):
                 name = product.get("product_name") or product.get("product_name_en") or f"Product ({barcode_str})"
                 categories = product.get("categories_tags", [])
                 
+                # Fetch Nutrition
+                nutriments = product.get("nutriments", {})
+                nutrition = {
+                    "calories": f"{nutriments.get('energy-kcal_100g', 'N/A')} kcal",
+                    "protein": f"{nutriments.get('proteins_100g', 'N/A')} g",
+                    "carbs": f"{nutriments.get('carbohydrates_100g', 'N/A')} g",
+                    "fat": f"{nutriments.get('fat_100g', 'N/A')} g"
+                }
+                
                 cat = "ready_meal"
                 if any("meat" in c or "poultry" in c for c in categories):
                     cat = "meat"
@@ -216,55 +234,38 @@ def lookup_barcode(barcode_str):
                 elif any("vegetable" in c or "fruit" in c or "produce" in c or "grape" in c for c in categories):
                     cat = "produce"
                     
-                return name, cat
+                return name, cat, nutrition
         except Exception:
             pass
             
-    return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
-
-def preprocess_receipt_image(image_bytes):
-    """Downscales photo to under 1MB for API limits and boosts contrast."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("L")
-    img.thumbnail((1200, 1200)) # Ensure photo remains under 1MB API ceiling
-    
-    enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(1.6)
-    
-    buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=80)
-    return buffer.getvalue()
+    return f"Scanned Item ({barcode_str})", ("produce" if "0857" in str(barcode_str) else "ready_meal"), default_nutrition
 
 def process_receipt_image(image_bytes):
-    """Parses M&S receipts using OCR.space with fallback regex filtering."""
     try:
-        clean_bytes = preprocess_receipt_image(image_bytes)
+        img = Image.open(io.BytesIO(image_bytes)).convert("L")
+        img.thumbnail((1200, 1200))
+        
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(2.0)
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        clean_bytes = buffer.getvalue()
         
         url = "https://api.ocr.space/parse/image"
         payload = {
             'apikey': 'helloworld',
             'language': 'eng',
-            'OCREngine': '1',
-            'scale': 'true',
-            'isTable': 'false'
+            'OCREngine': '2',
+            'isTable': 'true'
         }
         files = [('file', ('receipt.jpg', clean_bytes, 'image/jpeg'))]
         
         res = requests.post(url, data=payload, files=files, timeout=20)
-        
-        if res.status_code != 200:
-            st.error(f"OCR Server Error: HTTP {res.status_code}")
-            return []
-            
         data = res.json()
         
-        if data.get("IsErroredOnProcessing"):
-            err_details = data.get("ErrorMessage", ["Unknown OCR error"])[0]
-            st.error(f"API Error: {err_details}")
-            return []
-
         parsed_results = data.get('ParsedResults', [])
         if not parsed_results:
-            st.error("Could not parse image text. Please try again with clear lighting.")
             return []
             
         raw_text = parsed_results[0].get('ParsedText', '')
@@ -274,39 +275,34 @@ def process_receipt_image(image_bytes):
             "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard", 
             "card", "balance", "thank", "receipt", "store", "tel", "date", "time", 
             "savings", "discount", "auth", "merchant", "pound", "http", "marks", "spencer",
-            "manager", "street", "lane", "road", "tel:", "order", "server", "table",
-            "balance to pay", "items:", "card tendered", "payment declined", "main street",
-            "largs", "ka30", "vat no", "www", "before saving"
+            "manager", "street", "lane", "road", "order", "server", "table", "largs",
+            "ka30", "vat no", "www", "saving", "tendered", "declined", "items", "m&s"
         ]
         
         extracted_items = []
         for line in lines:
-            clean_line = line.strip()
-            
-            if not clean_line or len(clean_line) < 3:
+            clean_line = re.sub(r'[^a-zA-Z0-9\s\&\.\-]', '', line).strip()
+            if not clean_line or len(clean_line) < 4:
                 continue
                 
             line_lower = clean_line.lower()
-            
             if any(k in line_lower for k in ignore_keywords):
                 continue
                 
-            # Strip leading SKU digits (e.g. "5059572001064 LEMON..." -> "LEMON...")
-            line_no_sku = re.sub(r'^\d{5,14}\s*', '', clean_line)
+            line_no_sku = re.sub(r'^\d{4,14}\s*', '', clean_line)
+            cleaned_item = re.sub(r'[\s\d\.\-]{2,}$', '', line_no_sku).strip()
             
-            # Strip trailing price and flags (e.g. "...£4.20<", "...£1.35*")
-            cleaned_item = re.sub(r'[\s£\$\d\.\,\<\*\-]{2,}$', '', line_no_sku).strip()
-            
-            if not cleaned_item or cleaned_item.isdigit() or len(cleaned_item) < 3:
+            letters_only = re.sub(r'[^a-zA-Z]', '', cleaned_item)
+            if len(letters_only) < 3:
                 continue
                 
             cat = "ready_meal"
             item_lower = cleaned_item.lower()
-            if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish", "tandoori"]):
+            if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish"]):
                 cat = "meat"
             elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip"]):
                 cat = "dairy"
-            elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon", "lime"]):
+            elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon"]):
                 cat = "produce"
                 
             extracted_items.append({"name": cleaned_item.title(), "category": cat})
@@ -344,77 +340,8 @@ def generate_smart_recipes(inventory):
     out += "\n\n---\n\n".join(recipes)
     return out
 
-def render_visual_fridge(inventory):
-    top_shelf = [i for i in inventory if i.get("category") in ["dairy", "ready_meal"]]
-    bottom_shelf = [i for i in inventory if i.get("category") == "meat"]
-    crisper = [i for i in inventory if i.get("category") == "produce"]
-
-    def generate_pills(items):
-        html = ""
-        for item in items:
-            exp_str = item.get("expiry_date", "")
-            is_urgent = False
-            if exp_str:
-                try:
-                    days = (datetime.strptime(exp_str, "%Y-%m-%d").date() - datetime.today().date()).days
-                    if days <= 2:
-                        is_urgent = True
-                except ValueError:
-                    pass
-            
-            bg_color = "#8B0000" if is_urgent else "#003B25"
-            html += f'''
-            <span style="
-                background-color: {bg_color};
-                color: #FFFFFF;
-                padding: 6px 14px;
-                border-radius: 20px;
-                font-size: 12px;
-                font-weight: 600;
-                letter-spacing: 0.5px;
-                display: inline-block;
-                margin: 4px;
-                border: 1px solid #C5A059;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                {item["name"]}
-            </span>
-            '''
-        return html or '<span style="color:#888888; font-style:italic; font-size:12px;">No items stored</span>'
-
-    fridge_html = f"""
-    <div style="
-        background: #FFFFFF;
-        border: 2px solid #C5A059;
-        border-radius: 16px;
-        padding: 20px;
-        max-width: 480px;
-        margin: 0 auto;
-        box-shadow: 0 8px 24px rgba(0, 59, 37, 0.08);">
-        
-        <div style="text-align: center; border-bottom: 1px solid #E0E0E0; padding-bottom: 10px; margin-bottom: 15px;">
-            <span style="font-family: 'Playfair Display', serif; font-size: 16px; letter-spacing: 2px; color: #003B25; font-weight: 600;">CHILLED PANTRY</span>
-        </div>
-
-        <div style="background: #F8F9F6; border-left: 4px solid #C5A059; padding: 14px; min-height: 85px; border-radius: 6px; margin-bottom: 12px;">
-            <small style="color: #003B25; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">🥛 TOP SHELF — Dairy & Prepared</small><br>
-            <div style="margin-top: 8px;">{generate_pills(top_shelf)}</div>
-        </div>
-
-        <div style="background: #F8F9F6; border-left: 4px solid #003B25; padding: 14px; min-height: 85px; border-radius: 6px; margin-bottom: 12px;">
-            <small style="color: #003B25; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">🥩 BOTTOM SHELF — Butcher & Fresh Meat</small><br>
-            <div style="margin-top: 8px;">{generate_pills(bottom_shelf)}</div>
-        </div>
-
-        <div style="background: #F8F9F6; border-left: 4px solid #2E7D32; padding: 14px; min-height: 85px; border-radius: 6px;">
-            <small style="color: #003B25; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">🥗 CRISPER DRAWER — Fresh Produce</small><br>
-            <div style="margin-top: 8px;">{generate_pills(crisper)}</div>
-        </div>
-    </div>
-    """
-    st.html(fridge_html)
-
 # ---------------------------------------------------------
-# 4. BRANDED HEADER & INTERFACE TABS
+# 4. BRANDED HEADER & USER SWITCHER
 # ---------------------------------------------------------
 st.markdown("""
 <div class="ms-header">
@@ -423,9 +350,25 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# User Profile Bar
+u_col1, u_col2 = st.columns([3, 1])
+with u_col1:
+    profiles = list(st.session_state.user_inventories.keys())
+    selected_user = st.selectbox("👤 Active User Account:", profiles, index=profiles.index(st.session_state.current_user))
+    st.session_state.current_user = selected_user
+with u_col2:
+    new_user = st.text_input("➕ New Account Name:", key="new_user_input")
+    if st.button("Create Profile") and new_user:
+        if new_user not in st.session_state.user_inventories:
+            st.session_state.user_inventories[new_user] = []
+            st.session_state.current_user = new_user
+            st.rerun()
+
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
 
-# --- TAB 1: SHOPPING, SCANNING & RECEIPTS ---
+active_inv = get_active_inventory()
+
+# --- TAB 1: SCANNING & RECEIPT ---
 with tab1:
     col1, col2 = st.columns([1, 1])
     
@@ -439,16 +382,17 @@ with tab1:
         
         if scanned_code and scanned_code != st.session_state.last_processed_code:
             st.session_state.last_processed_code = scanned_code
-            item_name, category = lookup_barcode(scanned_code)
+            item_name, category, nutrition = lookup_barcode(scanned_code)
             
-            st.session_state.inventory.append({
+            active_inv.append({
+                "id": datetime.now().timestamp(),
                 "name": item_name,
                 "category": category,
-                "source": "Scan",
-                "barcode": scanned_code,
+                "portion": 1.0,
+                "nutrition": nutrition,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
-            st.toast(f"✨ Auto-Saved: **{item_name}**", icon="🛒")
+            st.toast(f"✨ Saved to {st.session_state.current_user}'s Pantry: **{item_name}**", icon="🛒")
 
         st.divider()
         st.caption("Quick Manual Lookup:")
@@ -458,81 +402,149 @@ with tab1:
         if st.button("Add Item to Pantry"):
             if manual_name:
                 if manual_name.isdigit():
-                    name, cat = lookup_barcode(manual_name)
+                    name, cat, nutrition = lookup_barcode(manual_name)
                 else:
                     name, cat = manual_name, manual_cat
+                    nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
                     
-                st.session_state.inventory.append({
+                active_inv.append({
+                    "id": datetime.now().timestamp(),
                     "name": name,
                     "category": cat,
-                    "source": "Manual",
+                    "portion": 1.0,
+                    "nutrition": nutrition,
                     "expiry_date": item_exp.strftime("%Y-%m-%d")
                 })
-                st.success(f"Added: **{name}**")
+                st.success(f"Added to {st.session_state.current_user}: **{name}**")
 
     with col2:
         st.subheader("2. Receipt OCR Photo Scanner")
-        st.caption("Snap a clear, straight photo of your receipt items")
+        st.caption("Snap a photo of your receipt")
         
         receipt_photo = st.file_uploader("Upload Receipt Image:", type=["jpg", "png", "jpeg"], key="receipt_upload")
         receipt_date = st.date_input("Use-By Date for Receipt Items:", datetime.today(), key="receipt_exp_date")
         
         if receipt_photo:
-            if st.button("📄 Extract Items From Receipt"):
-                with st.spinner("Processing receipt lines..."):
+            if st.button("📄 Scan Receipt"):
+                with st.spinner("Extracting grocery items..."):
                     img_bytes = receipt_photo.getvalue()
-                    items_found = process_receipt_image(img_bytes)
-                    
-                    if items_found:
-                        for item in items_found:
-                            st.session_state.inventory.append({
-                                "name": item["name"],
-                                "category": item["category"],
-                                "source": "Receipt",
-                                "expiry_date": receipt_date.strftime("%Y-%m-%d")
-                            })
-                        st.success(f"Added {len(items_found)} items from receipt!")
-                        st.rerun()
+                    st.session_state.staged_receipt_items = process_receipt_image(img_bytes)
+
+        if st.session_state.staged_receipt_items:
+            st.markdown("---")
+            st.subheader("Review Extracted Items:")
+            staged_df = pd.DataFrame(st.session_state.staged_receipt_items)
+            edited_df = st.data_editor(staged_df, num_rows="dynamic", key="receipt_editor")
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("✅ Confirm & Save"):
+                    confirmed_items = edited_df.to_dict("records")
+                    for item in confirmed_items:
+                        active_inv.append({
+                            "id": datetime.now().timestamp(),
+                            "name": str(item["name"]),
+                            "category": str(item["category"]),
+                            "portion": 1.0,
+                            "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
+                            "expiry_date": receipt_date.strftime("%Y-%m-%d")
+                        })
+                    st.session_state.staged_receipt_items = []
+                    st.success("Saved items to Pantry!")
+                    st.rerun()
+            with col_b:
+                if st.button("❌ Discard"):
+                    st.session_state.staged_receipt_items = []
+                    st.rerun()
 
         st.divider()
         st.subheader("3. Butcher Selection")
-        st.caption("Add fresh butcher cuts directly to your bottom shelf")
-        
-        butcher_item = st.text_input("Meat Cut Name (e.g., Ribeye Steak, Minced Beef):")
+        butcher_item = st.text_input("Meat Cut Name (e.g., Ribeye Steak):")
         butcher_exp = st.date_input("Meat Use-By Date:", datetime.today(), key="butcher_exp_date")
         
         if st.button("Add Meat Selection"):
             if butcher_item:
-                st.session_state.inventory.append({
+                active_inv.append({
+                    "id": datetime.now().timestamp(),
                     "name": butcher_item,
                     "category": "meat",
-                    "source": "Butcher",
+                    "portion": 1.0,
+                    "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
                     "expiry_date": butcher_exp.strftime("%Y-%m-%d")
                 })
-                st.success(f"Added: **{butcher_item}** to Fresh Meat Shelf!")
+                st.success(f"Added: **{butcher_item}**")
 
-# --- TAB 2: VISUAL FRIDGE ---
+# --- TAB 2: INTERACTIVE VISUAL CHILLED PANTRY ---
 with tab2:
-    if st.session_state.inventory:
-        render_visual_fridge(st.session_state.inventory)
+    st.subheader(f"🧊 {st.session_state.current_user}'s Chilled Pantry")
+    st.caption("Click any item button below to log usage or inspect detailed nutrition info.")
+    
+    if active_inv:
+        sections = [
+            ("🥛 TOP SHELF — Dairy & Prepared", ["dairy", "ready_meal"]),
+            ("🥩 BOTTOM SHELF — Butcher & Meat", ["meat"]),
+            ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
+        ]
         
+        for section_title, categories in sections:
+            st.markdown(f"#### {section_title}")
+            shelf_items = [item for item in active_inv if item.get("category") in categories]
+            
+            if not shelf_items:
+                st.info("No items on this shelf.")
+            else:
+                cols = st.columns(3)
+                for index, item in enumerate(shelf_items):
+                    col = cols[index % 3]
+                    with col:
+                        portion_pct = int(item.get("portion", 1.0) * 100)
+                        label = f"📦 {item['name']} ({portion_pct}%)"
+                        
+                        with st.popover(label, use_container_width=True):
+                            st.markdown(f"### **{item['name']}**")
+                            st.write(f"**Remaining Portion:** {portion_pct}%")
+                            st.write(f"**Use-By Date:** {item.get('expiry_date', 'N/A')}")
+                            
+                            st.markdown("---")
+                            st.markdown("**📊 Nutrition Info (per 100g):**")
+                            nut = item.get("nutrition", {})
+                            st.write(f"• **Calories:** {nut.get('calories', 'N/A')}")
+                            st.write(f"• **Protein:** {nut.get('protein', 'N/A')}")
+                            st.write(f"• **Carbs:** {nut.get('carbs', 'N/A')}")
+                            st.write(f"• **Fat:** {nut.get('fat', 'N/A')}")
+                            
+                            st.markdown("---")
+                            st.markdown("**🍽️ Log Usage:**")
+                            p_col1, p_col2, p_col3 = st.columns(3)
+                            
+                            if p_col1.button("Used 1/4", key=f"quarter_{item['id']}"):
+                                item["portion"] -= 0.25
+                                if item["portion"] <= 0:
+                                    active_inv.remove(item)
+                                st.rerun()
+                                
+                            if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
+                                item["portion"] -= 0.50
+                                if item["portion"] <= 0:
+                                    active_inv.remove(item)
+                                st.rerun()
+                                
+                            if p_col3.button("Finished", key=f"finish_{item['id']}"):
+                                active_inv.remove(item)
+                                st.rerun()
+
         st.divider()
-        st.subheader("Pantry Inventory Overview")
-        df = pd.DataFrame(st.session_state.inventory)
-        st.dataframe(df, use_container_width=True)
-        
-        if st.button("🗑️ Clear Pantry"):
-            st.session_state.inventory = []
-            st.session_state.last_processed_code = None
+        if st.button("🗑️ Clear Entire Pantry"):
+            st.session_state.user_inventories[st.session_state.current_user] = []
             st.rerun()
     else:
-        st.info("Your Pantry is currently empty! Use the Trolley Scanner to add fresh items.")
+        st.info("Your Pantry is currently empty!")
 
 # --- TAB 3: MEAL PLANNER ---
 with tab3:
-    if st.session_state.inventory:
+    if active_inv:
         if st.button("🍴 Generate Gourmet Recipe Ideas"):
-            recipes = generate_smart_recipes(st.session_state.inventory)
+            recipes = generate_smart_recipes(active_inv)
             st.markdown(recipes)
     else:
         st.warning("Add food items to your pantry before generating meal inspirations.")
