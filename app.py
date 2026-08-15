@@ -177,9 +177,38 @@ with tab1:
         st.subheader("1. M&S Barcode Scanner")
         st.caption("Point camera at barcode to automatically add item")
         
-        # Embedded Live JS Barcode Scanner (Forced Rear Camera with Fallback)
         scanner_code = """
-        <div id="reader" style="width: 100%;"></div>
+        <style>
+            #reader {
+                width: 100% !important;
+                border: none !important;
+                margin: 0 auto !important;
+                position: relative !important;
+            }
+            #reader video {
+                width: 100% !important;
+                height: auto !important;
+                border-radius: 12px;
+                object-fit: cover !important;
+            }
+            #reader__scan_region {
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+            }
+            #reader__scan_region img {
+                opacity: 0.8;
+            }
+            #reader__dashboard {
+                display: none !important;
+            }
+        </style>
+        <div id="reader"></div>
         <script src="https://unpkg.com/html5-qrcode"></script>
         <script>
             function onScanSuccess(decodedText, decodedResult) {
@@ -187,19 +216,33 @@ with tab1:
             }
             
             const html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+            
+            const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
+                let minEdgePercentage = 0.7;
+                let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+                return {
+                    width: qrboxSize,
+                    height: Math.floor(qrboxSize * 0.6)
+                };
+            }
+
+            const config = { 
+                fps: 15, 
+                qrbox: qrboxFunction,
+                aspectRatio: 1.333333
+            };
             
             html5QrCode.start(
                 { facingMode: "environment" }, 
                 config, 
                 onScanSuccess
             ).catch(err => {
-                // Fallback to default/user camera if environment camera is unavailable
                 html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
             });
         </script>
         """
-        scanned_code = components.html(scanner_code, height=320)
+        scanned_code = components.html(scanner_code, height=350)
         
         barcode_input = st.text_input("Or enter barcode manually:", key="manual_barcode")
         item_exp = st.date_input("Use-By Date:", datetime.today())
