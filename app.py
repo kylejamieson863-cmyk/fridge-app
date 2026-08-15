@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import streamlit.components.v1 as components
+import streamlit_authenticator as stauth
 import requests
 import pandas as pd
 import re
@@ -109,7 +110,57 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. CREATE NATIVE SCANNER COMPONENT
+# 2. USER AUTHENTICATION SETUP
+# ---------------------------------------------------------
+# Configure accounts for you and your friends here
+credentials = {
+    "usernames": {
+        "user1": {
+            "name": "Your Account",
+            "password": stauth.Hasher(["password123"]).generate()[0]
+        },
+        "friend1": {
+            "name": "Friend's Account",
+            "password": stauth.Hasher(["friendpassword"]).generate()[0]
+        }
+    }
+}
+
+authenticator = stauth.Authenticate(
+    credentials,
+    "pantry_cookie_name",
+    "pantry_signature_key",
+    cookie_expiry_days=30
+)
+
+authenticator.login("Login to Smart Pantry", "main")
+
+if st.session_state["authentication_status"] is False:
+    st.error("Username/password is incorrect")
+    st.stop()
+elif st.session_state["authentication_status"] is None:
+    st.warning("Please enter your username and password to access your private pantry.")
+    st.stop()
+
+# Isolated User Session Data
+current_username = st.session_state["username"]
+
+if "private_inventories" not in st.session_state:
+    st.session_state.private_inventories = {}
+
+if current_username not in st.session_state.private_inventories:
+    st.session_state.private_inventories[current_username] = []
+
+active_inv = st.session_state.private_inventories[current_username]
+
+if "last_processed_code" not in st.session_state:
+    st.session_state.last_processed_code = None
+
+if "staged_receipt_items" not in st.session_state:
+    st.session_state.staged_receipt_items = []
+
+# ---------------------------------------------------------
+# 3. CREATE NATIVE SCANNER COMPONENT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -184,25 +235,8 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 3. SESSION STATE & MULTI-USER MANAGEMENT
+# 4. HELPER FUNCTIONS
 # ---------------------------------------------------------
-if "user_inventories" not in st.session_state:
-    st.session_state.user_inventories = {
-        "Default Profile": []
-    }
-
-if "current_user" not in st.session_state:
-    st.session_state.current_user = "Default Profile"
-
-if "last_processed_code" not in st.session_state:
-    st.session_state.last_processed_code = None
-
-if "staged_receipt_items" not in st.session_state:
-    st.session_state.staged_receipt_items = []
-
-def get_active_inventory():
-    return st.session_state.user_inventories[st.session_state.current_user]
-
 def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
     default_nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
@@ -217,7 +251,6 @@ def lookup_barcode(barcode_str):
                 name = product.get("product_name") or product.get("product_name_en") or f"Product ({barcode_str})"
                 categories = product.get("categories_tags", [])
                 
-                # Fetch Nutrition
                 nutriments = product.get("nutriments", {})
                 nutrition = {
                     "calories": f"{nutriments.get('energy-kcal_100g', 'N/A')} kcal",
@@ -341,7 +374,7 @@ def generate_smart_recipes(inventory):
     return out
 
 # ---------------------------------------------------------
-# 4. BRANDED HEADER & USER SWITCHER
+# 5. BRANDED HEADER & APP INTERFACE
 # ---------------------------------------------------------
 st.markdown("""
 <div class="ms-header">
@@ -350,23 +383,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# User Profile Bar
-u_col1, u_col2 = st.columns([3, 1])
-with u_col1:
-    profiles = list(st.session_state.user_inventories.keys())
-    selected_user = st.selectbox("👤 Active User Account:", profiles, index=profiles.index(st.session_state.current_user))
-    st.session_state.current_user = selected_user
-with u_col2:
-    new_user = st.text_input("➕ New Account Name:", key="new_user_input")
-    if st.button("Create Profile") and new_user:
-        if new_user not in st.session_state.user_inventories:
-            st.session_state.user_inventories[new_user] = []
-            st.session_state.current_user = new_user
-            st.rerun()
+# Top Bar with Logged In User and Logout Button
+top_col1, top_col2 = st.columns([4, 1])
+with top_col1:
+    st.write(f"Logged in as: **{st.session_state['name']}**")
+with top_col2:
+    authenticator.logout("Logout", "main")
 
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
-
-active_inv = get_active_inventory()
 
 # --- TAB 1: SCANNING & RECEIPT ---
 with tab1:
@@ -392,7 +416,7 @@ with tab1:
                 "nutrition": nutrition,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
-            st.toast(f"✨ Saved to {st.session_state.current_user}'s Pantry: **{item_name}**", icon="🛒")
+            st.toast(f"✨ Saved to your Pantry: **{item_name}**", icon="🛒")
 
         st.divider()
         st.caption("Quick Manual Lookup:")
@@ -415,7 +439,7 @@ with tab1:
                     "nutrition": nutrition,
                     "expiry_date": item_exp.strftime("%Y-%m-%d")
                 })
-                st.success(f"Added to {st.session_state.current_user}: **{name}**")
+                st.success(f"Added: **{name}**")
 
     with col2:
         st.subheader("2. Receipt OCR Photo Scanner")
@@ -476,7 +500,7 @@ with tab1:
 
 # --- TAB 2: INTERACTIVE VISUAL CHILLED PANTRY ---
 with tab2:
-    st.subheader(f"🧊 {st.session_state.current_user}'s Chilled Pantry")
+    st.subheader(f"🧊 Your Private Chilled Pantry")
     st.caption("Click any item button below to log usage or inspect detailed nutrition info.")
     
     if active_inv:
@@ -535,7 +559,7 @@ with tab2:
 
         st.divider()
         if st.button("🗑️ Clear Entire Pantry"):
-            st.session_state.user_inventories[st.session_state.current_user] = []
+            st.session_state.private_inventories[current_username] = []
             st.rerun()
     else:
         st.info("Your Pantry is currently empty!")
