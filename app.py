@@ -29,6 +29,7 @@ ms_css = """
         color: #1E1E1E;
     }
 
+    /* Branded Luxury Header */
     .ms-header {
         background-color: #003B25;
         color: #FFFFFF;
@@ -56,6 +57,16 @@ ms_css = """
         font-weight: 500;
     }
 
+    /* Styled Auth Cards & Containers */
+    div[data-testid="stForm"] {
+        border: 1px solid #C5A059 !important;
+        border-radius: 12px !important;
+        padding: 25px !important;
+        background-color: #FFFFFF !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Streamlit Tabs Styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
@@ -81,7 +92,8 @@ ms_css = """
         font-weight: 600;
     }
 
-    .stButton > button {
+    /* Custom Button Styling */
+    .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
         border: 1px solid #003B25 !important;
@@ -94,23 +106,34 @@ ms_css = """
         padding: 8px 16px !important;
         transition: all 0.2s ease !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        width: 100%;
     }
-    .stButton > button:hover {
+    .stButton > button:hover, form [data-testid="stFormSubmitButton"] > button:hover {
         background-color: #C5A059 !important;
         border-color: #C5A059 !important;
         color: #1E1E1E !important;
     }
 
+    /* Input Field Styling */
     input, select {
         border-radius: 6px !important;
         border: 1px solid #CCCCCC !important;
     }
 </style>
-"""
-st.markdown(ms_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. USER AUTHENTICATION & SIGN-UP SETUP
+# 2. BRANDED HEADER (Rendered First for All Users)
+# ---------------------------------------------------------
+st.markdown("""
+<div class="ms-header">
+    <div class="ms-brand">SMART PANTRY</div>
+    <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 3. USER AUTHENTICATION & SIGN-UP SETUP
 # ---------------------------------------------------------
 if "users_db" not in st.session_state:
     try:
@@ -134,49 +157,51 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-# Authentication Interface (Login & Sign-Up Tabs)
-auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Sign Up"])
+# Authentication Interface rendered inside a centered layout
+if not st.session_state.get("authentication_status"):
+    auth_col1, auth_col2, auth_col3 = st.columns([1, 2, 1])
+    with auth_col2:
+        auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Register New Account"])
 
-with auth_tab1:
-    try:
-        authenticator.login()
-    except Exception:
-        authenticator.login("Login", "main")
+        with auth_tab1:
+            try:
+                authenticator.login()
+            except Exception:
+                authenticator.login("Login", "main")
 
-with auth_tab2:
-    try:
-        if authenticator.register_user("Register User", pre_authorization=False):
-            st.success("User registered successfully! Switch to the Login tab to log in.")
-    except Exception:
-        with st.form("signup_form"):
-            st.subheader("Create a New Account")
-            new_username = st.text_input("Username / Email")
-            new_name = st.text_input("Full Name")
-            new_pw = st.text_input("Password", type="password")
-            submit_signup = st.form_submit_button("Create Account")
+        with auth_tab2:
+            with st.form("signup_form"):
+                st.markdown("<h3 style='text-align: center; color: #003B25;'>Create Your Account</h3>", unsafe_allow_html=True)
+                new_username = st.text_input("Username / Email")
+                new_name = st.text_input("Full Name")
+                new_pw = st.text_input("Password", type="password")
+                submit_signup = st.form_submit_button("Register Account")
 
-            if submit_signup:
-                if new_username and new_pw:
-                    try:
-                        hashed_pw = stauth.Hasher.hash(new_pw)
-                    except Exception:
-                        hashed_pw = stauth.Hasher([new_pw]).generate()[0]
+                if submit_signup:
+                    if new_username and new_pw:
+                        try:
+                            hashed_pw = stauth.Hasher.hash(new_pw)
+                        except Exception:
+                            hashed_pw = stauth.Hasher([new_pw]).generate()[0]
 
-                    st.session_state.users_db["usernames"][new_username] = {
-                        "name": new_name if new_name else new_username,
-                        "password": hashed_pw
-                    }
-                    st.success("Account created successfully! Click on the Login tab to log in.")
-                else:
-                    st.error("Please provide both a username and password.")
+                        st.session_state.users_db["usernames"][new_username] = {
+                            "name": new_name if new_name else new_username,
+                            "password": hashed_pw
+                        }
+                        st.success("Account created successfully! Switch to the Login tab to sign in.")
+                    else:
+                        st.error("Please provide both a username and password.")
 
 if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
 elif st.session_state.get("authentication_status") is None:
-    st.info("Please log in or create an account using the Sign Up tab above.")
+    st.info("Please log in or create an account above to access your private pantry.")
     st.stop()
 
+# ---------------------------------------------------------
+# 4. ISOLATED SESSION & BARCODE SETUP
+# ---------------------------------------------------------
 current_username = st.session_state.get("username")
 
 if "private_inventories" not in st.session_state:
@@ -193,8 +218,21 @@ if "last_processed_code" not in st.session_state:
 if "staged_receipt_items" not in st.session_state:
     st.session_state.staged_receipt_items = []
 
+# Top User Info & Logout Button
+top_col1, top_col2 = st.columns([4, 1])
+with top_col1:
+    user_display = st.session_state.get("name", current_username)
+    st.write(f"Logged in as: **{user_display}**")
+with top_col2:
+    try:
+        authenticator.logout("Logout", "main")
+    except Exception:
+        if st.button("Logout"):
+            st.session_state.clear()
+            st.rerun()
+
 # ---------------------------------------------------------
-# 3. CREATE NATIVE SCANNER COMPONENT
+# 5. CREATE NATIVE SCANNER COMPONENT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -269,7 +307,7 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 4. HELPER FUNCTIONS
+# 6. HELPER FUNCTIONS
 # ---------------------------------------------------------
 def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
@@ -408,27 +446,8 @@ def generate_smart_recipes(inventory):
     return out
 
 # ---------------------------------------------------------
-# 5. BRANDED HEADER & APP INTERFACE
+# 7. MAIN PANTRY INTERFACE
 # ---------------------------------------------------------
-st.markdown("""
-<div class="ms-header">
-    <div class="ms-brand">SMART PANTRY</div>
-    <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
-</div>
-""", unsafe_allow_html=True)
-
-top_col1, top_col2 = st.columns([4, 1])
-with top_col1:
-    user_display = st.session_state.get("name", current_username)
-    st.write(f"Logged in as: **{user_display}**")
-with top_col2:
-    try:
-        authenticator.logout("Logout", "main")
-    except Exception:
-        if st.button("Logout"):
-            st.session_state.clear()
-            st.rerun()
-
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
 
 # --- TAB 1: SCANNING & RECEIPT ---
