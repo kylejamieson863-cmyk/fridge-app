@@ -18,19 +18,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Aesthetic CSS
 ms_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap');
 
-    /* Global Background & Typography */
     .stApp {
         background-color: #F8F9F6;
         font-family: 'Montserrat', sans-serif;
         color: #1E1E1E;
     }
 
-    /* Header Banner */
     .ms-header {
         background-color: #003B25;
         color: #FFFFFF;
@@ -58,7 +55,6 @@ ms_css = """
         font-weight: 500;
     }
 
-    /* Custom Streamlit Tabs Styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
@@ -84,7 +80,6 @@ ms_css = """
         font-weight: 600;
     }
 
-    /* Primary Buttons */
     .stButton > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
@@ -105,12 +100,10 @@ ms_css = """
         color: #1E1E1E !important;
     }
 
-    /* Card Containers */
     div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column"] {
         border-radius: 12px;
     }
 
-    /* Inputs */
     input, select {
         border-radius: 6px !important;
         border: 1px solid #CCCCCC !important;
@@ -120,7 +113,7 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. CREATE NATIVE SCANNER COMPONENT (CENTERED OVERLAY)
+# 2. CREATE NATIVE SCANNER COMPONENT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -130,45 +123,11 @@ HTML_SCANNER_CODE = """
 <head>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { 
-        margin: 0; 
-        padding: 0; 
-        font-family: 'Montserrat', -apple-system, sans-serif; 
-        background: transparent; 
-    }
-    #reader { 
-        width: 100%; 
-        height: 300px;
-        border-radius: 12px; 
-        overflow: hidden; 
-        background: #000; 
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        position: relative !important;
-        border: 2px solid #C5A059;
-    }
-    #reader video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-    }
-    #reader__scan_region {
-        position: absolute !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        margin: 0 !important;
-    }
-    #status { 
-        text-align: center; 
-        font-weight: 600; 
-        color: #003B25; 
-        margin-top: 10px; 
-        font-size: 13px; 
-        letter-spacing: 0.5px;
-        min-height: 22px; 
-    }
+    body { margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; }
+    #reader { width: 100%; height: 300px; border-radius: 12px; overflow: hidden; background: #000; display: flex !important; align-items: center !important; justify-content: center !important; position: relative !important; border: 2px solid #C5A059; }
+    #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+    #reader__scan_region { position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; margin: 0 !important; }
+    #status { text-align: center; font-weight: 600; color: #003B25; margin-top: 10px; font-size: 13px; letter-spacing: 0.5px; min-height: 22px; }
   </style>
 </head>
 <body>
@@ -177,10 +136,7 @@ HTML_SCANNER_CODE = """
 
   <script>
     function sendMessage(type, data) {
-        window.parent.postMessage(Object.assign({
-            isStreamlitMessage: true,
-            type: type
-        }, data), "*");
+        window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
     }
 
     sendMessage("streamlit:componentReady", {apiVersion: 1});
@@ -209,23 +165,13 @@ HTML_SCANNER_CODE = """
     }
 
     const html5QrCode = new Html5Qrcode("reader");
-    const config = {
-        fps: 25,
-        qrbox: { width: 260, height: 150 },
-        experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
-        }
-    };
+    const config = { fps: 25, qrbox: { width: 260, height: 150 }, experimentalFeatures: { useBarCodeDetectorIfSupported: true } };
 
     html5QrCode.start({ facingMode: { exact: "environment" } }, config, onScanSuccess)
-        .then(() => {
-            document.getElementById('status').innerText = "READY TO SCAN";
-        })
+        .then(() => { document.getElementById('status').innerText = "READY TO SCAN"; })
         .catch(() => {
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                .then(() => {
-                    document.getElementById('status').innerText = "READY TO SCAN";
-                })
+                .then(() => { document.getElementById('status').innerText = "READY TO SCAN"; })
                 .catch(err => {
                     html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
                     document.getElementById('status').innerText = "READY TO SCAN (FRONT CAMERA)";
@@ -251,9 +197,7 @@ if "last_processed_code" not in st.session_state:
     st.session_state.last_processed_code = None
 
 def lookup_barcode(barcode_str):
-    """Fetches product details from public Open Food Facts API."""
     barcode_clean = str(barcode_str).strip()
-    
     for test_code in [barcode_clean, barcode_clean.zfill(13)]:
         url = f"https://world.openfoodfacts.org/api/v2/product/{test_code}.json"
         headers = {"User-Agent": "SmartPantryApp/1.0"}
@@ -279,27 +223,18 @@ def lookup_barcode(barcode_str):
     return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
 def preprocess_receipt_image(image_bytes):
-    """Grayscales, boosts contrast, and crops off price column (right 35%)."""
+    """Boosts contrast for thermal paper without cropping out product text."""
     img = Image.open(io.BytesIO(image_bytes)).convert("L")
-    
-    # Increase contrast for thermal paper
     enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(2.0)
+    img = enhancer.enhance(1.8)
     
-    # Crop right 35% where prices, tax codes, and totals live
-    width, height = img.size
-    crop_box = (0, 0, int(width * 0.65), height)
-    cropped_img = img.crop(crop_box)
-    
-    # Save processed image to byte buffer
     buffer = io.BytesIO()
-    cropped_img.save(buffer, format="JPEG")
+    img.save(buffer, format="JPEG")
     return buffer.getvalue()
 
 def process_receipt_image(image_bytes):
-    """Processes receipt photos with image cropping and smart line cleaning."""
+    """Processes receipt photos by stripping SKU prefixes and price suffixes."""
     try:
-        # Preprocess photo to isolate product names
         clean_bytes = preprocess_receipt_image(image_bytes)
         
         url = "https://api.ocr.space/parse/image"
@@ -307,52 +242,58 @@ def process_receipt_image(image_bytes):
             'apikey': 'helloworld',
             'language': 'eng',
             'OCREngine': '2',
+            'isTable': False
         }
         files = [('file', ('receipt.jpg', clean_bytes, 'image/jpeg'))]
-        response = requests.post(url, data=payload, files=files, timeout=12).json()
+        response = requests.post(url, data=payload, files=files, timeout=15).json()
         
         parsed_results = response.get('ParsedResults', [])
         if not parsed_results:
-            st.error("OCR service could not parse image text. Please ensure image is well-lit and flat.")
+            st.error("OCR service could not parse image text. Ensure photo is well-lit and flat.")
             return []
             
         raw_text = parsed_results[0].get('ParsedText', '')
         lines = raw_text.split('\r\n')
         
-        # Keywords to ignore store metadata, dates, and non-food lines
         ignore_keywords = [
             "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard", 
             "card", "balance", "thank", "receipt", "store", "tel", "date", "time", 
             "savings", "discount", "auth", "merchant", "pound", "http", "marks", "spencer",
-            "manager", "street", "lane", "road", "tel:", "order", "server", "table"
+            "manager", "street", "lane", "road", "tel:", "order", "server", "table",
+            "balance to pay", "items:", "card tendered", "payment declined", "main street",
+            "largs", "ka30", "vat no"
         ]
         
         extracted_items = []
         for line in lines:
             clean_line = line.strip()
             
-            # Skip short noise or empty lines
             if not clean_line or len(clean_line) < 3:
                 continue
                 
             line_lower = clean_line.lower()
             
-            # Skip metadata lines or pure numbers
-            if any(k in line_lower for k in ignore_keywords) or clean_line.isdigit():
+            if any(k in line_lower for k in ignore_keywords):
                 continue
                 
-            # Strip out price numbers or symbols lingering on the line
-            cleaned_item = re.sub(r'[\d£\$\.\,]+', '', clean_line).strip()
+            # Step 1: Strip leading SKU/barcode numbers (e.g. "00429405 ")
+            line_no_sku = re.sub(r'^\d{5,14}\s*', '', clean_line)
             
+            # Step 2: Strip trailing prices and symbols (e.g. " £4.20<", " £1.35*")
+            cleaned_item = re.sub(r'\s*[\d£\$\.\,\<\*\-]+\s*$', '', line_no_sku).strip()
+            
+            # Skip lines that were purely numeric metadata
+            if not cleaned_item or cleaned_item.isdigit():
+                continue
+                
             if len(cleaned_item) >= 3:
-                # Category Detection
                 cat = "ready_meal"
                 item_lower = cleaned_item.lower()
-                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish"]):
+                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish", "tandoori"]):
                     cat = "meat"
-                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar"]):
+                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip"]):
                     cat = "dairy"
-                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit"]):
+                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon", "lime"]):
                     cat = "produce"
                     
                 extracted_items.append({"name": cleaned_item.title(), "category": cat})
@@ -363,7 +304,6 @@ def process_receipt_image(image_bytes):
         return []
 
 def generate_smart_recipes(inventory):
-    """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
         return "Your Pantry is empty! Add items to generate recipe inspirations."
     
@@ -392,7 +332,6 @@ def generate_smart_recipes(inventory):
     return out
 
 def render_visual_fridge(inventory):
-    """Renders visual representation of pantry/fridge zones."""
     top_shelf = [i for i in inventory if i.get("category") in ["dairy", "ready_meal"]]
     bottom_shelf = [i for i in inventory if i.get("category") == "meat"]
     crisper = [i for i in inventory if i.get("category") == "produce"]
@@ -483,7 +422,6 @@ with tab1:
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
-        # Native Camera Feed
         scanned_code = barcode_scanner(height=360, key="live_barcode_reader")
         
         if scanned_code and scanned_code != st.session_state.last_processed_code:
@@ -528,7 +466,7 @@ with tab1:
         
         if receipt_photo:
             if st.button("📄 Extract Items From Receipt"):
-                with st.spinner("Cropping prices & reading items..."):
+                with st.spinner("Processing receipt lines..."):
                     img_bytes = receipt_photo.getvalue()
                     items_found = process_receipt_image(img_bytes)
                     
