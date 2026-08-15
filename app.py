@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
@@ -5,15 +6,100 @@ import pandas as pd
 from datetime import datetime
 
 # ---------------------------------------------------------
-# 1. PAGE SETUP & SESSION STATE
+# 1. CREATE NATIVE SCANNER COMPONENT AT STARTUP
+# ---------------------------------------------------------
+os.makedirs("scanner_component", exist_ok=True)
+
+HTML_SCANNER_CODE = """
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { margin: 0; padding: 0; font-family: sans-serif; background: transparent; }
+    #reader { width: 100%; border-radius: 12px; overflow: hidden; }
+    #status { text-align: center; font-weight: bold; color: #2e7d32; margin-top: 8px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="reader"></div>
+  <div id="status"></div>
+
+  <script>
+    let isCooldown = false;
+
+    function sendMessageToStreamlit(type, data) {
+        const outData = Object.assign({
+            isStreamlitMessage: true,
+            type: type,
+        }, data);
+        window.parent.postMessage(outData, "*");
+    }
+
+    // Handshake with Streamlit
+    sendMessageToStreamlit("streamlit:componentReady", {apiVersion: 1});
+
+    function sendResult(value) {
+        sendMessageToStreamlit("streamlit:setComponentValue", {value: value, dataType: "json"});
+    }
+
+    function onScanSuccess(decodedText) {
+        if (isCooldown) return;
+        isCooldown = true;
+
+        if (navigator.vibrate) navigator.vibrate(120);
+        document.getElementById('status').innerText = "✅ Scanned: " + decodedText;
+        
+        sendResult(decodedText);
+
+        // Reset buffer after 2 seconds for next item
+        setTimeout(() => {
+            sendResult(null);
+            document.getElementById('status').innerText = "Ready for next barcode...";
+            isCooldown = false;
+        }, 2000);
+    }
+
+    const html5QrCode = new Html5Qrcode("reader");
+    const config = {
+        fps: 25,
+        qrbox: function(w, h) {
+            let minEdge = Math.min(w, h);
+            return { width: Math.floor(minEdge * 0.85), height: Math.floor(minEdge * 0.5) };
+        },
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        }
+    };
+
+    // Force rear camera (environment) with fallback
+    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+        .catch(err => {
+            html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
+        });
+  </script>
+</body>
+</html>
+"""
+
+with open("scanner_component/index.html", "w") as f:
+    f.write(HTML_SCANNER_CODE)
+
+barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
+
+# ---------------------------------------------------------
+# 2. PAGE SETUP & SESSION STATE
 # ---------------------------------------------------------
 st.set_page_config(page_title="Smart Pantry & Meal Planner", page_icon="🥩", layout="wide")
 
 if "inventory" not in st.session_state:
     st.session_state.inventory = []
 
+if "last_processed_code" not in st.session_state:
+    st.session_state.last_processed_code = None
+
 # ---------------------------------------------------------
-# 2. HANDLE AUTO-SAVED BARCODE FROM CAMERA
+# 3. HELPER FUNCTIONS
 # ---------------------------------------------------------
 def lookup_barcode(barcode_str):
     """Fetches product details from public Open Food Facts API."""
@@ -43,24 +129,6 @@ def lookup_barcode(barcode_str):
             
     return f"M&S Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
-# Auto-catch scanned code sent via URL parameter
-if "scanned" in st.query_params:
-    scanned_code = st.query_params["scanned"]
-    st.query_params.clear() # Clear param so browser is ready for next scan
-    
-    item_name, category = lookup_barcode(scanned_code)
-    st.session_state.inventory.append({
-        "name": item_name,
-        "category": category,
-        "source": "M&S",
-        "barcode": scanned_code,
-        "expiry_date": datetime.today().strftime("%Y-%m-%d")
-    })
-    st.toast(f"✅ Auto-Saved: **{item_name}**", icon="🛒")
-
-# ---------------------------------------------------------
-# 3. HELPER FUNCTIONS
-# ---------------------------------------------------------
 def generate_smart_recipes(inventory):
     """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
@@ -175,50 +243,21 @@ with tab1:
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
-        # HTML5 Continuous Scanner using Rear Camera
-        scanner_html = """
-        <div id="reader" style="width: 100%; border-radius: 12px; overflow: hidden;"></div>
-        <div id="scan-status" style="text-align:center; font-weight:bold; color:#2e7d32; margin-top:8px;"></div>
-        <script src="https://unpkg.com/html5-qrcode"></script>
-        <script>
-            let isProcessing = false;
-
-            function onScanSuccess(decodedText) {
-                if (isProcessing) return;
-                isProcessing = true;
-
-                if (navigator.vibrate) navigator.vibrate(100);
-                document.getElementById('scan-status').innerText = "✅ Saving code: " + decodedText + "...";
-
-                // Pass barcode directly to top window URL to trigger Streamlit auto-save
-                const targetUrl = new URL(window.top.location.href);
-                targetUrl.searchParams.set("scanned", decodedText);
-                window.top.location.href = targetUrl.href;
-            }
-
-            const html5QrCode = new Html5Qrcode("reader");
-            
-            const config = {
-                fps: 15,
-                qrbox: function(w, h) {
-                    let minEdge = Math.min(w, h);
-                    return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.5) };
-                },
-                aspectRatio: 1.333333,
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: true
-                }
-            };
-
-            // Force rear camera (environment mode)
-            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                .catch(err => {
-                    html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
-                });
-        </script>
-        """
+        # Native Component Camera Feed
+        scanned_code = barcode_scanner(key="live_barcode_reader")
         
-        components.html(scanner_html, height=360)
+        if scanned_code and scanned_code != st.session_state.last_processed_code:
+            st.session_state.last_processed_code = scanned_code
+            item_name, category = lookup_barcode(scanned_code)
+            
+            st.session_state.inventory.append({
+                "name": item_name,
+                "category": category,
+                "source": "M&S",
+                "barcode": scanned_code,
+                "expiry_date": item_exp.strftime("%Y-%m-%d")
+            })
+            st.toast(f"✅ Auto-Saved: **{item_name}**", icon="🛒")
 
         st.divider()
         st.caption("Quick Manual Entry:")
@@ -271,6 +310,7 @@ with tab2:
         
         if st.button("🗑️ Clear Entire Fridge"):
             st.session_state.inventory = []
+            st.session_state.last_processed_code = None
             st.rerun()
     else:
         st.info("Your fridge is empty! Use the Trolley Scanner tab to add items.")
