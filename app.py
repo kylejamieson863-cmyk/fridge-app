@@ -6,7 +6,7 @@ import pandas as pd
 from datetime import datetime
 
 # ---------------------------------------------------------
-# 1. CREATE NATIVE SCANNER COMPONENT WITH EXPLICIT HEIGHT
+# 1. CREATE NATIVE SCANNER COMPONENT WITH CENTERED OVERLAY
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -16,9 +16,43 @@ HTML_SCANNER_CODE = """
 <head>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: transparent; }
-    #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #f0f2f6; }
-    #status { text-align: center; font-weight: 600; color: #2e7d32; margin-top: 8px; font-size: 14px; min-height: 22px; }
+    body { 
+        margin: 0; 
+        padding: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        background: transparent; 
+    }
+    #reader { 
+        width: 100%; 
+        height: 300px;
+        border-radius: 12px; 
+        overflow: hidden; 
+        background: #000; 
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: relative !important;
+    }
+    #reader video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+    }
+    #reader__scan_region {
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        margin: 0 !important;
+    }
+    #status { 
+        text-align: center; 
+        font-weight: 600; 
+        color: #2e7d32; 
+        margin-top: 8px; 
+        font-size: 14px; 
+        min-height: 22px; 
+    }
   </style>
 </head>
 <body>
@@ -33,7 +67,6 @@ HTML_SCANNER_CODE = """
         }, data), "*");
     }
 
-    // Handshake with Streamlit and set explicit height
     sendMessage("streamlit:componentReady", {apiVersion: 1});
     sendMessage("streamlit:setFrameHeight", {height: 350});
 
@@ -61,17 +94,13 @@ HTML_SCANNER_CODE = """
 
     const html5QrCode = new Html5Qrcode("reader");
     const config = {
-        fps: 20,
-        qrbox: function(w, h) {
-            let minEdge = Math.min(w, h);
-            return { width: Math.floor(minEdge * 0.85), height: Math.floor(minEdge * 0.5) };
-        },
+        fps: 25,
+        qrbox: { width: 260, height: 150 },
         experimentalFeatures: {
             useBarCodeDetectorIfSupported: true
         }
     };
 
-    // Try rear camera environment mode
     html5QrCode.start({ facingMode: { exact: "environment" } }, config, onScanSuccess)
         .then(() => {
             document.getElementById('status').innerText = "Ready to scan barcode";
@@ -252,7 +281,7 @@ with tab1:
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
-        # Native Component Camera Feed with Explicit Height
+        # Native Component Camera Feed with Centered Overlay
         scanned_code = barcode_scanner(height=360, key="live_barcode_reader")
         
         if scanned_code and scanned_code != st.session_state.last_processed_code:
