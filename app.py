@@ -313,6 +313,7 @@ def process_receipt_image(image_bytes):
         
         parsed_results = response.get('ParsedResults', [])
         if not parsed_results:
+            st.error("OCR service could not parse image text. Please ensure image is well-lit and flat.")
             return []
             
         raw_text = parsed_results[0].get('ParsedText', '')
@@ -351,13 +352,14 @@ def process_receipt_image(image_bytes):
                     cat = "meat"
                 elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar"]):
                     cat = "dairy"
-                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "berry", "fruit"]):
+                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit"]):
                     cat = "produce"
                     
                 extracted_items.append({"name": cleaned_item.title(), "category": cat})
                 
         return extracted_items
     except Exception as e:
+        st.error(f"Receipt Processing Error: {str(e)}")
         return []
 
 def generate_smart_recipes(inventory):
