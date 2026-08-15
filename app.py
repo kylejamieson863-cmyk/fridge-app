@@ -16,7 +16,6 @@ st.set_page_config(page_title="Smart Pantry & Meal Planner", page_icon="🥩", l
 if "inventory" not in st.session_state:
     st.session_state.inventory = []
 
-# API Key Configuration (via Streamlit Secrets or Environment Variable)
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", None)
 
 # ---------------------------------------------------------
@@ -32,7 +31,6 @@ def lookup_barcode(barcode_str):
             name = product.get("product_name") or product.get("product_name_en") or f"Item {barcode_str}"
             categories = product.get("categories_tags", [])
             
-            # Basic category guessing
             cat = "ready_meal"
             if any("meat" in c or "poultry" in c for c in categories):
                 cat = "meat"
@@ -103,7 +101,6 @@ def render_visual_fridge(inventory):
         html = ""
         for item in items:
             exp_str = item.get("expiry_date", "")
-            # Simple check if expiring within 2 days
             is_urgent = False
             if exp_str:
                 try:
@@ -180,7 +177,7 @@ with tab1:
         st.subheader("1. M&S Barcode Scanner")
         st.caption("Point camera at barcode to automatically add item")
         
-        # Embedded Live JS Barcode Scanner
+        # Embedded Live JS Barcode Scanner (Forced Rear Camera with Fallback)
         scanner_code = """
         <div id="reader" style="width: 100%;"></div>
         <script src="https://unpkg.com/html5-qrcode"></script>
@@ -188,13 +185,22 @@ with tab1:
             function onScanSuccess(decodedText, decodedResult) {
                 window.parent.postMessage({type: 'streamlit:setComponentValue', value: decodedText}, '*');
             }
-            let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} });
-            html5QrcodeScanner.render(onScanSuccess);
+            
+            const html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+            
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess
+            ).catch(err => {
+                // Fallback to default/user camera if environment camera is unavailable
+                html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
+            });
         </script>
         """
         scanned_code = components.html(scanner_code, height=320)
         
-        # Manual fallback / scanned output handler
         barcode_input = st.text_input("Or enter barcode manually:", key="manual_barcode")
         item_exp = st.date_input("Use-By Date:", datetime.today())
         
