@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import json
 import pandas as pd
@@ -44,10 +43,47 @@ def lookup_barcode(barcode_str):
         pass
     return f"M&S Item ({barcode_str})", "ready_meal"
 
+def scan_barcode_from_image(image):
+    """Uses Gemini Vision API to extract barcode digits or product name from photo."""
+    if not GEMINI_API_KEY:
+        st.error("Please add `GEMINI_API_KEY` to your Streamlit secrets.")
+        return None, "ready_meal"
+    
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt = """
+        Analyze this photo of a food product or barcode.
+        Extract:
+        1. The barcode digits (EAN/UPC) if visible, OR the exact product name.
+        2. Category: 'meat', 'dairy', 'produce', or 'ready_meal'.
+        
+        Return ONLY a JSON object:
+        {"barcode_or_name": "5000169001234", "category": "meat"}
+        """
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[image, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
+        )
+        data = json.loads(response.text)
+        val = data.get("barcode_or_name", "")
+        cat = data.get("category", "ready_meal")
+        
+        # If Gemini returned numeric barcode, look it up in Open Food Facts
+        if val.isdigit():
+            name, official_cat = lookup_barcode(val)
+            return name, official_cat
+        return val, cat
+    except Exception as e:
+        st.error(f"Error reading scan photo: {e}")
+        return None, "ready_meal"
+
 def parse_receipt_with_gemini(image):
     """Uses Gemini Vision API to extract item names from printed receipts."""
     if not GEMINI_API_KEY:
-        st.error("Please add `GEMINI_API_KEY` to your Streamlit secrets to enable image parsing.")
+        st.error("Please add `GEMINI_API_KEY` to your Streamlit secrets.")
         return []
     
     try:
@@ -55,7 +91,7 @@ def parse_receipt_with_gemini(image):
         prompt = """
         Extract all food items from this printed butcher receipt/invoice.
         Categorize each as 'meat', 'dairy', 'produce', or 'ready_meal'.
-        Return ONLY a JSON array with objects matching this exact schema:
+        Return ONLY a JSON array:
         [{"name": "Ribeye Steak 500g", "category": "meat"}]
         """
         response = client.models.generate_content(
@@ -67,7 +103,7 @@ def parse_receipt_with_gemini(image):
         )
         return json.loads(response.text)
     except Exception as e:
-        st.error(f"Error processing image with AI: {e}")
+        st.error(f"Error processing receipt image: {e}")
         return []
 
 def generate_recipes(inventory):
@@ -161,25 +197,7 @@ def render_visual_fridge(inventory):
     st.html(fridge_html)
 
 # ---------------------------------------------------------
-# 3. AUTOMATIC BARCODE SCAN CATCHER
-# ---------------------------------------------------------
-if "scanned" in st.query_params:
-    scanned_code = st.query_params["scanned"]
-    del st.query_params["scanned"] # Clear parameter immediately
-    
-    name, cat = lookup_barcode(scanned_code)
-    
-    # Auto-add item to session state
-    st.session_state.inventory.append({
-        "name": name,
-        "category": cat,
-        "source": "M&S",
-        "expiry_date": datetime.today().strftime("%Y-%m-%d")
-    })
-    st.toast(f"✅ Added: **{name}**", icon="🛒")
-
-# ---------------------------------------------------------
-# 4. INTERFACE TABS
+# 3. INTERFACE TABS
 # ---------------------------------------------------------
 st.title("🥩 Smart Fridge & Meal Planner")
 
@@ -192,109 +210,29 @@ with tab1:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("1. M&S Barcode Scanner")
-        st.caption("Point camera at barcode — auto-saves on scan!")
+        st.subheader("1. M&S Product Camera")
+        st.caption("Point camera at product/barcode & tap snap to auto-add")
         
-        scanner_code = """
-        <style>
-            #reader {
-                width: 100% !important;
-                border: none !important;
-                margin: 0 auto !important;
-                position: relative !important;
-            }
-            #reader video {
-                width: 100% !important;
-                height: auto !important;
-                border-radius: 12px;
-                object-fit: cover !important;
-            }
-            #reader__scan_region {
-                display: flex !important;
-                justify-content: center !important;
-                align-items: center !important;
-                position: absolute !important;
-                top: 0 !important;
-                left: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-            }
-            #reader__dashboard {
-                display: none !important;
-            }
-            #status-msg {
-                text-align: center;
-                font-family: sans-serif;
-                font-weight: bold;
-                color: #2e7d32;
-                margin-top: 10px;
-            }
-        </style>
-        <div id="reader"></div>
-        <div id="status-msg"></div>
-        <script src="https://unpkg.com/html5-qrcode"></script>
-        <script>
-            let isProcessing = false;
-            const html5QrCode = new Html5Qrcode("reader");
-
-            function onScanSuccess(decodedText, decodedResult) {
-                if (isProcessing) return;
-                isProcessing = true;
-                
-                document.getElementById('status-msg').innerText = "✅ Barcode Detected! Saving...";
-                
-                // 1. Stop scanner immediately to prevent green flickering loop
-                html5QrCode.stop().then(() => {
-                    // 2. Perform top-level navigation using a target="_top" link
-                    let topUrlStr = document.referrer || window.parent.location.href;
-                    let topUrl = new URL(topUrlStr);
-                    topUrl.searchParams.set("scanned", decodedText);
-
-                    let link = document.createElement('a');
-                    link.href = topUrl.href;
-                    link.target = "_top";
-                    document.body.appendChild(link);
-                    link.click();
-                }).catch(err => {
-                    // Fallback redirect if stop fails
-                    let topUrlStr = document.referrer || window.parent.location.href;
-                    let topUrl = new URL(topUrlStr);
-                    topUrl.searchParams.set("scanned", decodedText);
-                    window.top.location.href = topUrl.href;
-                });
-            }
-            
-            const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
-                let minEdgePercentage = 0.7;
-                let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-                let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-                return {
-                    width: qrboxSize,
-                    height: Math.floor(qrboxSize * 0.6)
-                };
-            }
-
-            const config = { 
-                fps: 10, 
-                qrbox: qrboxFunction,
-                aspectRatio: 1.333333
-            };
-            
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                config, 
-                onScanSuccess
-            ).catch(err => {
-                html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
-            });
-        </script>
-        """
-        scanned_code = components.html(scanner_code, height=360)
+        item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
+        camera_photo = st.camera_input("Take photo of item or barcode")
         
+        if camera_photo:
+            img = Image.open(camera_photo)
+            with st.spinner("Analyzing photo & identifying product..."):
+                item_name, category = scan_barcode_from_image(img)
+                if item_name:
+                    st.session_state.inventory.append({
+                        "name": item_name,
+                        "category": category,
+                        "source": "M&S",
+                        "expiry_date": item_exp.strftime("%Y-%m-%d")
+                    })
+                    st.toast(f"✅ Added: **{item_name}**", icon="🛒")
+                    st.success(f"Added: **{item_name}** ({category})")
+
         st.divider()
-        st.caption("Manual Fallback:")
-        barcode_input = st.text_input("Or enter barcode manually:", key="manual_barcode")
-        item_exp = st.date_input("Use-By Date:", datetime.today())
+        st.caption("Manual Entry Fallback:")
+        barcode_input = st.text_input("Or type barcode manually:", key="manual_barcode")
         
         if st.button("Add Manual Barcode"):
             if barcode_input:
@@ -310,7 +248,7 @@ with tab1:
     with col2:
         st.subheader("2. Butcher Receipt Snap")
         uploaded_file = st.file_uploader("Snap photo of printed butcher invoice:", type=["jpg", "jpeg", "png"])
-        butcher_exp = st.date_input("Default Meat Expiry Date:", datetime.today())
+        butcher_exp = st.date_input("Default Meat Expiry Date:", datetime.today(), key="butcher_exp_date")
         
         if uploaded_file and st.button("Process Receipt"):
             img = Image.open(uploaded_file)
