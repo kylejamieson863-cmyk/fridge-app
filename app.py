@@ -6,7 +6,7 @@ import pandas as pd
 from datetime import datetime
 
 # ---------------------------------------------------------
-# 1. CREATE NATIVE SCANNER COMPONENT AT STARTUP
+# 1. CREATE NATIVE SCANNER COMPONENT WITH EXPLICIT HEIGHT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -16,31 +16,31 @@ HTML_SCANNER_CODE = """
 <head>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; background: transparent; }
-    #reader { width: 100%; border-radius: 12px; overflow: hidden; }
-    #status { text-align: center; font-weight: bold; color: #2e7d32; margin-top: 8px; font-size: 14px; }
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: transparent; }
+    #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #f0f2f6; }
+    #status { text-align: center; font-weight: 600; color: #2e7d32; margin-top: 8px; font-size: 14px; min-height: 22px; }
   </style>
 </head>
 <body>
   <div id="reader"></div>
-  <div id="status"></div>
+  <div id="status">📷 Starting rear camera...</div>
 
   <script>
-    let isCooldown = false;
-
-    function sendMessageToStreamlit(type, data) {
-        const outData = Object.assign({
+    function sendMessage(type, data) {
+        window.parent.postMessage(Object.assign({
             isStreamlitMessage: true,
-            type: type,
-        }, data);
-        window.parent.postMessage(outData, "*");
+            type: type
+        }, data), "*");
     }
 
-    // Handshake with Streamlit
-    sendMessageToStreamlit("streamlit:componentReady", {apiVersion: 1});
+    // Handshake with Streamlit and set explicit height
+    sendMessage("streamlit:componentReady", {apiVersion: 1});
+    sendMessage("streamlit:setFrameHeight", {height: 350});
 
-    function sendResult(value) {
-        sendMessageToStreamlit("streamlit:setComponentValue", {value: value, dataType: "json"});
+    let isCooldown = false;
+
+    function sendResult(val) {
+        sendMessage("streamlit:setComponentValue", {value: val});
     }
 
     function onScanSuccess(decodedText) {
@@ -48,21 +48,20 @@ HTML_SCANNER_CODE = """
         isCooldown = true;
 
         if (navigator.vibrate) navigator.vibrate(120);
-        document.getElementById('status').innerText = "✅ Scanned: " + decodedText;
+        document.getElementById('status').innerText = "✅ Saved " + decodedText + "! Ready for next...";
         
         sendResult(decodedText);
 
-        // Reset buffer after 2 seconds for next item
         setTimeout(() => {
             sendResult(null);
             document.getElementById('status').innerText = "Ready for next barcode...";
             isCooldown = false;
-        }, 2000);
+        }, 2200);
     }
 
     const html5QrCode = new Html5Qrcode("reader");
     const config = {
-        fps: 25,
+        fps: 20,
         qrbox: function(w, h) {
             let minEdge = Math.min(w, h);
             return { width: Math.floor(minEdge * 0.85), height: Math.floor(minEdge * 0.5) };
@@ -72,10 +71,20 @@ HTML_SCANNER_CODE = """
         }
     };
 
-    // Force rear camera (environment) with fallback
-    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-        .catch(err => {
-            html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
+    // Try rear camera environment mode
+    html5QrCode.start({ facingMode: { exact: "environment" } }, config, onScanSuccess)
+        .then(() => {
+            document.getElementById('status').innerText = "Ready to scan barcode";
+        })
+        .catch(() => {
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => {
+                    document.getElementById('status').innerText = "Ready to scan barcode";
+                })
+                .catch(err => {
+                    html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
+                    document.getElementById('status').innerText = "Ready to scan barcode (Front Camera Fallback)";
+                });
         });
   </script>
 </body>
@@ -243,8 +252,8 @@ with tab1:
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
-        # Native Component Camera Feed
-        scanned_code = barcode_scanner(key="live_barcode_reader")
+        # Native Component Camera Feed with Explicit Height
+        scanned_code = barcode_scanner(height=360, key="live_barcode_reader")
         
         if scanned_code and scanned_code != st.session_state.last_processed_code:
             st.session_state.last_processed_code = scanned_code
