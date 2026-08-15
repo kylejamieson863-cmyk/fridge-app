@@ -3,6 +3,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import requests
 import pandas as pd
+import re
 from datetime import datetime
 
 # ---------------------------------------------------------
@@ -275,6 +276,64 @@ def lookup_barcode(barcode_str):
             
     return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
+def process_receipt_image(image_bytes):
+    """Processes receipt photos via free OCR API and cleans line items."""
+    try:
+        url = "https://api.ocr.space/parse/image"
+        payload = {
+            'apikey': 'helloworld', # Free public key
+            'language': 'eng',
+            'isTable': True,
+        }
+        files = [('file', ('receipt.jpg', image_bytes, 'image/jpeg'))]
+        response = requests.post(url, data=payload, files=files, timeout=10).json()
+        
+        parsed_results = response.get('ParsedResults', [])
+        if not parsed_results:
+            return []
+            
+        raw_text = parsed_results[0].get('ParsedText', '')
+        lines = raw_text.split('\r\n')
+        
+        # Keywords to filter out store metadata, payment info, and totals
+        ignore_keywords = [
+            "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard", 
+            "card", "balance", "thank", "receipt", "store", "tel", "date", "time", 
+            "savings", "discount", "auth", "merchant", "pound", "£", "http"
+        ]
+        
+        extracted_items = []
+        for line in lines:
+            clean_line = line.strip()
+            if not clean_line or len(clean_line) < 3:
+                continue
+                
+            line_lower = clean_line.lower()
+            
+            # Skip non-item lines
+            if any(k in line_lower for k in ignore_keywords) or re.search(r'\d{2}/\d{2}/\d{2}', line):
+                continue
+                
+            # Clean trailing prices (e.g. "CHICKEN BREAST 4.50" -> "CHICKEN BREAST")
+            cleaned_item = re.sub(r'[\d£\.]+$', '', clean_line).strip()
+            
+            if len(cleaned_item) > 2 and not cleaned_item.isdigit():
+                # Determine category
+                cat = "ready_meal"
+                item_lower = cleaned_item.lower()
+                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat"]):
+                    cat = "meat"
+                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt"]):
+                    cat = "dairy"
+                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org"]):
+                    cat = "produce"
+                    
+                extracted_items.append({"name": cleaned_item.title(), "category": cat})
+                
+        return extracted_items
+    except Exception:
+        return []
+
 def generate_smart_recipes(inventory):
     """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
@@ -386,12 +445,12 @@ st.markdown("""
 
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
 
-# --- TAB 1: SHOPPING & SCANNING ---
+# --- TAB 1: SHOPPING, SCANNING & RECEIPTS ---
 with tab1:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("1. Hands-Free Scanner")
+        st.subheader("1. Hands-Free Barcode Scanner")
         st.caption("Point camera at barcode — items auto-save to your Pantry.")
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
@@ -433,11 +492,37 @@ with tab1:
                 st.success(f"Added: **{name}**")
 
     with col2:
-        st.subheader("2. Butcher Selection")
+        st.subheader("2. Receipt OCR Photo Scanner")
+        st.caption("Snap a photo of your paper receipt to import items")
+        
+        receipt_photo = st.file_uploader("Upload Receipt Image:", type=["jpg", "png", "jpeg"], key="receipt_upload")
+        receipt_date = st.date_input("Use-By Date for Receipt Items:", datetime.today(), key="receipt_exp_date")
+        
+        if receipt_photo:
+            if st.button("📄 Extract Items From Receipt"):
+                with st.spinner("Processing receipt..."):
+                    img_bytes = receipt_photo.getvalue()
+                    items_found = process_receipt_image(img_bytes)
+                    
+                    if items_found:
+                        for item in items_found:
+                            st.session_state.inventory.append({
+                                "name": item["name"],
+                                "category": item["category"],
+                                "source": "Receipt",
+                                "expiry_date": receipt_date.strftime("%Y-%m-%d")
+                            })
+                        st.success(f"Added {len(items_found)} items from receipt!")
+                        st.rerun()
+                    else:
+                        st.warning("Could not read item lines clearly. Try taking a flatter photo with good lighting.")
+
+        st.divider()
+        st.subheader("3. Butcher Selection")
         st.caption("Add fresh butcher cuts directly to your bottom shelf")
         
         butcher_item = st.text_input("Meat Cut Name (e.g., Ribeye Steak, Minced Beef):")
-        butcher_exp = st.date_input("Use-By Date:", datetime.today(), key="butcher_exp_date")
+        butcher_exp = st.date_input("Meat Use-By Date:", datetime.today(), key="butcher_exp_date")
         
         if st.button("Add Meat Selection"):
             if butcher_item:
