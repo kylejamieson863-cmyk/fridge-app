@@ -13,8 +13,8 @@ from PIL import Image, ImageEnhance
 # 1. PAGE CONFIG & LUXURY CSS INJECTION
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Smart Pantry | Food & Meal Planner",
-    page_icon="🛍️",
+    page_title="Smart Fridge | Food & Meal Planner",
+    page_icon="🧊",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -128,7 +128,7 @@ st.markdown(ms_css, unsafe_allow_html=True)
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
-    <div class="ms-brand">SMART PANTRY</div>
+    <div class="ms-brand">SMART FRIDGE</div>
     <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
 </div>
 """
@@ -198,7 +198,7 @@ if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
 elif st.session_state.get("authentication_status") is None:
-    st.info("Please log in or create an account above to access your private pantry.")
+    st.info("Please log in or create an account above to access your private fridge.")
     st.stop()
 
 # ---------------------------------------------------------
@@ -274,7 +274,7 @@ HTML_SCANNER_CODE = """
         isCooldown = true;
 
         if (navigator.vibrate) navigator.vibrate(120);
-        document.getElementById('status').innerText = "✨ SAVED " + decodedText + " TO PANTRY";
+        document.getElementById('status').innerText = "✨ SAVED " + decodedText + " TO FRIDGE";
         
         sendResult(decodedText);
 
@@ -421,7 +421,7 @@ def process_receipt_image(image_bytes):
 
 def generate_smart_recipes(inventory):
     if not inventory:
-        return "Your Pantry is empty! Add items to generate recipe inspirations."
+        return "Your fridge is empty! Add items to generate recipe inspirations."
     
     sorted_items = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
     expiring_soon = [i["name"] for i in sorted_items[:3]]
@@ -450,15 +450,15 @@ def generate_smart_recipes(inventory):
 # ---------------------------------------------------------
 # 7. MAIN PANTRY INTERFACE
 # ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Chilled Pantry", "🍴 Gourmet Meal Planner"])
+tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Fridge", "🍴 Gourmet Meal Planner"])
 
 # --- TAB 1: SCANNING & RECEIPT ---
 with tab1:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("1. Hands-Free Barcode Scanner")
-        st.caption("Point camera at barcode — items auto-save to your Pantry.")
+        st.subheader("1. Barcode Scanner")
+        st.caption("Point camera at barcode — items auto-save to your fridge.")
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
@@ -476,14 +476,14 @@ with tab1:
                 "nutrition": nutrition,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
-            st.toast(f"✨ Saved to your Pantry: **{item_name}**", icon="🛒")
+            st.toast(f"✨ Saved to your Fridge: **{item_name}**", icon="🛒")
 
         st.divider()
         st.caption("Quick Manual Lookup:")
         manual_name = st.text_input("Product Name or Barcode Digits:", key="manual_barcode")
         manual_cat = st.selectbox("Category:", ["meat", "dairy", "produce", "ready_meal"])
         
-        if st.button("Add Item to Pantry"):
+        if st.button("Add Item to Fridge"):
             if manual_name:
                 if manual_name.isdigit():
                     name, cat, nutrition = lookup_barcode(manual_name)
@@ -534,39 +534,22 @@ with tab1:
                             "expiry_date": receipt_date.strftime("%Y-%m-%d")
                         })
                     st.session_state.staged_receipt_items = []
-                    st.success("Saved items to Pantry!")
+                    st.success("Saved items to Fridge!")
                     st.rerun()
             with col_b:
                 if st.button("❌ Discard"):
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-        st.divider()
-        st.subheader("3. Butcher Selection")
-        butcher_item = st.text_input("Meat Cut Name (e.g., Ribeye Steak):")
-        butcher_exp = st.date_input("Meat Use-By Date:", datetime.today(), key="butcher_exp_date")
-        
-        if st.button("Add Meat Selection"):
-            if butcher_item:
-                active_inv.append({
-                    "id": datetime.now().timestamp(),
-                    "name": butcher_item,
-                    "category": "meat",
-                    "portion": 1.0,
-                    "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
-                    "expiry_date": butcher_exp.strftime("%Y-%m-%d")
-                })
-                st.success(f"Added: **{butcher_item}**")
-
-# --- TAB 2: INTERACTIVE VISUAL CHILLED PANTRY ---
+# --- TAB 2: INTERACTIVE VISUAL FRIDGE ---
 with tab2:
-    st.subheader("🧊 Your Private Chilled Pantry")
+    st.subheader("🧊 Your Fridge")
     st.caption("Click any item button below to log usage or inspect detailed nutrition info.")
     
     if active_inv:
         sections = [
             ("🥛 TOP SHELF — Dairy & Prepared", ["dairy", "ready_meal"]),
-            ("🥩 BOTTOM SHELF — Butcher & Meat", ["meat"]),
+            ("🥩 BOTTOM SHELF — Meat & Poultry", ["meat"]),
             ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
         ]
         
@@ -618,11 +601,11 @@ with tab2:
                                 st.rerun()
 
         st.divider()
-        if st.button("🗑️ Clear Entire Pantry"):
+        if st.button("🗑️ Clear Entire Fridge"):
             st.session_state.private_inventories[current_username] = []
             st.rerun()
     else:
-        st.info("Your Pantry is currently empty!")
+        st.info("Your fridge is empty!")
 
 # --- TAB 3: MEAL PLANNER ---
 with tab3:
@@ -631,4 +614,4 @@ with tab3:
             recipes = generate_smart_recipes(active_inv)
             st.markdown(recipes)
     else:
-        st.warning("Add food items to your pantry before generating meal inspirations.")
+        st.warning("Add food items to your fridge before generating meal inspirations.")
