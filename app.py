@@ -176,7 +176,7 @@ if "scanned" in st.query_params:
         "source": "M&S",
         "expiry_date": datetime.today().strftime("%Y-%m-%d")
     })
-    st.toast(f"✅ Auto-saved: **{name}**", icon="🛒")
+    st.toast(f"✅ Added: **{name}**", icon="🛒")
 
 # ---------------------------------------------------------
 # 4. INTERFACE TABS
@@ -193,7 +193,7 @@ with tab1:
     
     with col1:
         st.subheader("1. M&S Barcode Scanner")
-        st.caption("Point camera at barcode — it automatically saves instantly!")
+        st.caption("Point camera at barcode — auto-saves on scan!")
         
         scanner_code = """
         <style>
@@ -219,29 +219,50 @@ with tab1:
                 width: 100% !important;
                 height: 100% !important;
             }
-            #reader__scan_region img {
-                opacity: 0.8;
-            }
             #reader__dashboard {
                 display: none !important;
             }
+            #status-msg {
+                text-align: center;
+                font-family: sans-serif;
+                font-weight: bold;
+                color: #2e7d32;
+                margin-top: 10px;
+            }
         </style>
         <div id="reader"></div>
+        <div id="status-msg"></div>
         <script src="https://unpkg.com/html5-qrcode"></script>
         <script>
             let isProcessing = false;
-            
+            const html5QrCode = new Html5Qrcode("reader");
+
             function onScanSuccess(decodedText, decodedResult) {
                 if (isProcessing) return;
                 isProcessing = true;
                 
-                // Instantly send barcode to Streamlit query params to trigger auto-save
-                const parentUrl = new URL(window.parent.location.href);
-                parentUrl.searchParams.set("scanned", decodedText);
-                window.parent.location.href = parentUrl.href;
+                document.getElementById('status-msg').innerText = "✅ Barcode Detected! Saving...";
+                
+                // 1. Stop scanner immediately to prevent green flickering loop
+                html5QrCode.stop().then(() => {
+                    // 2. Perform top-level navigation using a target="_top" link
+                    let topUrlStr = document.referrer || window.parent.location.href;
+                    let topUrl = new URL(topUrlStr);
+                    topUrl.searchParams.set("scanned", decodedText);
+
+                    let link = document.createElement('a');
+                    link.href = topUrl.href;
+                    link.target = "_top";
+                    document.body.appendChild(link);
+                    link.click();
+                }).catch(err => {
+                    // Fallback redirect if stop fails
+                    let topUrlStr = document.referrer || window.parent.location.href;
+                    let topUrl = new URL(topUrlStr);
+                    topUrl.searchParams.set("scanned", decodedText);
+                    window.top.location.href = topUrl.href;
+                });
             }
-            
-            const html5QrCode = new Html5Qrcode("reader");
             
             const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
                 let minEdgePercentage = 0.7;
@@ -254,7 +275,7 @@ with tab1:
             }
 
             const config = { 
-                fps: 15, 
+                fps: 10, 
                 qrbox: qrboxFunction,
                 aspectRatio: 1.333333
             };
@@ -268,7 +289,7 @@ with tab1:
             });
         </script>
         """
-        scanned_code = components.html(scanner_code, height=350)
+        scanned_code = components.html(scanner_code, height=360)
         
         st.divider()
         st.caption("Manual Fallback:")
