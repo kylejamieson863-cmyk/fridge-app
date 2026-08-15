@@ -6,4 +6,4 @@ pillow>=10.0.0
 numpy
 opencv-python-headless
 zxing-cpp
-pip install streamlit-authenticator 
+streamlit-authenticator 
