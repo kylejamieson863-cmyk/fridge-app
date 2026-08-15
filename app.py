@@ -110,45 +110,71 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. USER AUTHENTICATION SETUP (VERSION SAFE)
+# 2. USER AUTHENTICATION & SIGN-UP SETUP
 # ---------------------------------------------------------
-try:
-    pw1_hash = stauth.Hasher.hash("password123")
-    pw2_hash = stauth.Hasher.hash("friendpassword")
-except Exception:
-    pw1_hash = stauth.Hasher(["password123"]).generate()[0]
-    pw2_hash = stauth.Hasher(["friendpassword"]).generate()[0]
+if "users_db" not in st.session_state:
+    try:
+        default_pw = stauth.Hasher.hash("password123")
+    except Exception:
+        default_pw = stauth.Hasher(["password123"]).generate()[0]
 
-credentials = {
-    "usernames": {
-        "user1": {
-            "name": "Your Account",
-            "password": pw1_hash
-        },
-        "friend1": {
-            "name": "Friend's Account",
-            "password": pw2_hash
+    st.session_state.users_db = {
+        "usernames": {
+            "user1": {
+                "name": "Default Account",
+                "password": default_pw
+            }
         }
     }
-}
 
 authenticator = stauth.Authenticate(
-    credentials,
+    st.session_state.users_db,
     "pantry_cookie_name",
     "pantry_signature_key",
     cookie_expiry_days=30
 )
 
-try:
-    authenticator.login()
-except Exception:
-    authenticator.login("Login to Smart Pantry", "main")
+# Authentication Interface (Login & Sign-Up Tabs)
+auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Sign Up"])
+
+with auth_tab1:
+    try:
+        authenticator.login()
+    except Exception:
+        authenticator.login("Login", "main")
+
+with auth_tab2:
+    try:
+        if authenticator.register_user("Register User", pre_authorization=False):
+            st.success("User registered successfully! Switch to the Login tab to log in.")
+    except Exception:
+        with st.form("signup_form"):
+            st.subheader("Create a New Account")
+            new_username = st.text_input("Username / Email")
+            new_name = st.text_input("Full Name")
+            new_pw = st.text_input("Password", type="password")
+            submit_signup = st.form_submit_button("Create Account")
+
+            if submit_signup:
+                if new_username and new_pw:
+                    try:
+                        hashed_pw = stauth.Hasher.hash(new_pw)
+                    except Exception:
+                        hashed_pw = stauth.Hasher([new_pw]).generate()[0]
+
+                    st.session_state.users_db["usernames"][new_username] = {
+                        "name": new_name if new_name else new_username,
+                        "password": hashed_pw
+                    }
+                    st.success("Account created successfully! Click on the Login tab to log in.")
+                else:
+                    st.error("Please provide both a username and password.")
 
 if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
 elif st.session_state.get("authentication_status") is None:
-    st.warning("Please enter your username and password to access your private pantry.")
+    st.info("Please log in or create an account using the Sign Up tab above.")
     st.stop()
 
 current_username = st.session_state.get("username")
