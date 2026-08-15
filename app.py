@@ -10,7 +10,7 @@ from datetime import datetime
 from PIL import Image, ImageEnhance
 
 # ---------------------------------------------------------
-# 1. PAGE CONFIG & LUXURY CSS INJECTION
+# 1. PAGE CONFIG & LUXURY STYLING INJECTION
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Smart Fridge | Food & Meal Planner",
@@ -24,21 +24,21 @@ ms_css = """
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap');
 
     .stApp {
-        background-color: #F8F9F6;
+        background-color: #F4F6F8;
         font-family: 'Montserrat', sans-serif;
         color: #1E1E1E;
     }
 
-    /* Branded Luxury Header */
+    /* Header */
     .ms-header {
-        background-color: #003B25;
+        background: linear-gradient(135deg, #003B25 0%, #002417 100%);
         color: #FFFFFF;
         padding: 24px 20px;
         text-align: center;
         border-bottom: 3px solid #C5A059;
         margin-bottom: 25px;
         border-radius: 0 0 12px 12px;
-        box-shadow: 0 4px 12px rgba(0, 59, 37, 0.15);
+        box-shadow: 0 6px 16px rgba(0, 59, 37, 0.2);
     }
     .ms-brand {
         font-family: 'Playfair Display', serif;
@@ -57,7 +57,7 @@ ms_css = """
         font-weight: 500;
     }
 
-    /* Styled Auth Cards & Containers */
+    /* Auth Forms & Cards */
     div[data-testid="stForm"] {
         border: 1px solid #C5A059 !important;
         border-radius: 12px !important;
@@ -66,7 +66,7 @@ ms_css = """
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
 
-    /* Streamlit Tabs Styling */
+    /* Streamlit Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
@@ -92,7 +92,7 @@ ms_css = """
         font-weight: 600;
     }
 
-    /* Custom Button Styling */
+    /* Global Buttons */
     .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
@@ -114,17 +114,84 @@ ms_css = """
         color: #1E1E1E !important;
     }
 
-    /* Input Field Styling */
     input, select {
         border-radius: 6px !important;
         border: 1px solid #CCCCCC !important;
+    }
+
+    /* ---------------------------------------------------------
+       VISUAL REALISTIC FRIDGE CONTAINER STYLING
+    --------------------------------------------------------- */
+    .fridge-outer-cabinet {
+        background: linear-gradient(180deg, #E2E8F0 0%, #CBD5E1 100%);
+        border: 12px solid #334155;
+        border-radius: 28px;
+        padding: 24px 20px 20px 20px;
+        box-shadow: inset 0 0 25px rgba(0,0,0,0.35), 0 15px 35px rgba(0,0,0,0.25);
+        margin: 15px 0;
+        position: relative;
+    }
+
+    .fridge-interior {
+        background: linear-gradient(180deg, #FFFFFF 0%, #EDF2F7 100%);
+        border-radius: 16px;
+        padding: 20px 15px 10px 15px;
+        box-shadow: inset 0 0 15px rgba(0, 59, 37, 0.08);
+        border: 2px solid #CBD5E1;
+    }
+
+    .fridge-shelf-header {
+        background: #003B25;
+        color: #FFFFFF;
+        padding: 8px 16px;
+        border-radius: 8px 8px 0 0;
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .fridge-shelf-rack {
+        background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(241,245,249,0.9) 100%);
+        border-bottom: 6px solid #94A3B8;
+        border-left: 2px solid #CBD5E1;
+        border-right: 2px solid #CBD5E1;
+        border-radius: 0 0 8px 8px;
+        padding: 16px 12px 12px 12px;
+        margin-bottom: 25px;
+        box-shadow: 0 6px 12px -2px rgba(0,0,0,0.15);
+        position: relative;
+    }
+
+    /* Metallic shelf bar effect */
+    .fridge-shelf-rack::after {
+        content: "";
+        position: absolute;
+        bottom: -6px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #CBD5E1, #FFFFFF, #94A3B8);
+    }
+
+    .empty-shelf-text {
+        text-align: center;
+        color: #94A3B8;
+        font-size: 12px;
+        font-style: italic;
+        padding: 15px 0;
+        margin: 0;
     }
 </style>
 """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. BRANDED HEADER (Rendered First for All Users)
+# 2. BRANDED HEADER
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
@@ -159,7 +226,6 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-# Authentication Interface rendered inside a centered layout
 if not st.session_state.get("authentication_status"):
     auth_col1, auth_col2, auth_col3 = st.columns([1, 2, 1])
     with auth_col2:
@@ -448,7 +514,7 @@ def generate_smart_recipes(inventory):
     return out
 
 # ---------------------------------------------------------
-# 7. MAIN PANTRY INTERFACE
+# 7. MAIN INTERFACE
 # ---------------------------------------------------------
 tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Fridge", "🍴 Gourmet Meal Planner"])
 
@@ -541,71 +607,82 @@ with tab1:
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-# --- TAB 2: INTERACTIVE VISUAL FRIDGE ---
+# --- TAB 2: INTERACTIVE VISUAL FRIDGE WITH REALISTIC SHELVES ---
 with tab2:
     st.subheader("🧊 Your Fridge")
-    st.caption("Click any item button below to log usage or inspect detailed nutrition info.")
-    
-    if active_inv:
-        sections = [
-            ("🥛 TOP SHELF — Dairy & Prepared", ["dairy", "ready_meal"]),
-            ("🥩 BOTTOM SHELF — Meat & Poultry", ["meat"]),
-            ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
-        ]
-        
-        for section_title, categories in sections:
-            st.markdown(f"#### {section_title}")
-            shelf_items = [item for item in active_inv if item.get("category") in categories]
-            
-            if not shelf_items:
-                st.info("No items on this shelf.")
-            else:
-                cols = st.columns(3)
-                for index, item in enumerate(shelf_items):
-                    col = cols[index % 3]
-                    with col:
-                        portion_pct = int(item.get("portion", 1.0) * 100)
-                        label = f"📦 {item['name']} ({portion_pct}%)"
-                        
-                        with st.popover(label, use_container_width=True):
-                            st.markdown(f"### **{item['name']}**")
-                            st.write(f"**Remaining Portion:** {portion_pct}%")
-                            st.write(f"**Use-By Date:** {item.get('expiry_date', 'N/A')}")
-                            
-                            st.markdown("---")
-                            st.markdown("**📊 Nutrition Info (per 100g):**")
-                            nut = item.get("nutrition", {})
-                            st.write(f"• **Calories:** {nut.get('calories', 'N/A')}")
-                            st.write(f"• **Protein:** {nut.get('protein', 'N/A')}")
-                            st.write(f"• **Carbs:** {nut.get('carbs', 'N/A')}")
-                            st.write(f"• **Fat:** {nut.get('fat', 'N/A')}")
-                            
-                            st.markdown("---")
-                            st.markdown("**🍽️ Log Usage:**")
-                            p_col1, p_col2, p_col3 = st.columns(3)
-                            
-                            if p_col1.button("Used 1/4", key=f"quarter_{item['id']}"):
-                                item["portion"] -= 0.25
-                                if item["portion"] <= 0:
-                                    active_inv.remove(item)
-                                st.rerun()
-                                
-                            if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
-                                item["portion"] -= 0.50
-                                if item["portion"] <= 0:
-                                    active_inv.remove(item)
-                                st.rerun()
-                                
-                            if p_col3.button("Finished", key=f"finish_{item['id']}"):
-                                active_inv.remove(item)
-                                st.rerun()
+    st.caption("Click any item to view details or log consumption.")
 
+    # Outer metallic cabinet wrapper
+    st.markdown('<div class="fridge-outer-cabinet"><div class="fridge-interior">', unsafe_allow_html=True)
+
+    shelves = [
+        ("🥛 TOP SHELF — Dairy & Prepared Items", ["dairy", "ready_meal"]),
+        ("🥩 MIDDLE SHELF — Meat & Poultry", ["meat"]),
+        ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
+    ]
+
+    for title, cats in shelves:
+        # Render the shelf title bar
+        st.markdown(f'<div class="fridge-shelf-header"><span>{title}</span></div>', unsafe_allow_html=True)
+        
+        # Render the wire rack area containing the items
+        st.markdown('<div class="fridge-shelf-rack">', unsafe_allow_html=True)
+        
+        shelf_items = [item for item in active_inv if item.get("category") in cats]
+
+        if not shelf_items:
+            st.markdown('<p class="empty-shelf-text">Shelf is currently empty</p>', unsafe_allow_html=True)
+        else:
+            cols = st.columns(3)
+            for idx, item in enumerate(shelf_items):
+                col = cols[idx % 3]
+                with col:
+                    portion_pct = int(item.get("portion", 1.0) * 100)
+                    item_icon = "🥛" if item.get("category") == "dairy" else "🥩" if item.get("category") == "meat" else "🥗" if item.get("category") == "produce" else "📦"
+                    label = f"{item_icon} {item['name']} ({portion_pct}%)"
+
+                    with st.popover(label, use_container_width=True):
+                        st.markdown(f"### **{item['name']}**")
+                        st.write(f"**Remaining Portion:** {portion_pct}%")
+                        st.write(f"**Use-By Date:** {item.get('expiry_date', 'N/A')}")
+                        
+                        st.markdown("---")
+                        st.markdown("**📊 Nutrition Info (per 100g):**")
+                        nut = item.get("nutrition", {})
+                        st.write(f"• **Calories:** {nut.get('calories', 'N/A')}")
+                        st.write(f"• **Protein:** {nut.get('protein', 'N/A')}")
+                        st.write(f"• **Carbs:** {nut.get('carbs', 'N/A')}")
+                        st.write(f"• **Fat:** {nut.get('fat', 'N/A')}")
+                        
+                        st.markdown("---")
+                        st.markdown("**🍽️ Log Usage:**")
+                        p_col1, p_col2, p_col3 = st.columns(3)
+                        
+                        if p_col1.button("Used 1/4", key=f"quarter_{item['id']}"):
+                            item["portion"] -= 0.25
+                            if item["portion"] <= 0:
+                                active_inv.remove(item)
+                            st.rerun()
+                            
+                        if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
+                            item["portion"] -= 0.50
+                            if item["portion"] <= 0:
+                                active_inv.remove(item)
+                            st.rerun()
+                            
+                        if p_col3.button("Finished", key=f"finish_{item['id']}"):
+                            active_inv.remove(item)
+                            st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True) # Close shelf-rack
+
+    st.markdown('</div></div>', unsafe_allow_html=True) # Close interior & outer cabinet
+
+    if active_inv:
         st.divider()
         if st.button("🗑️ Clear Entire Fridge"):
             st.session_state.private_inventories[current_username] = []
             st.rerun()
-    else:
-        st.info("Your fridge is empty!")
 
 # --- TAB 3: MEAL PLANNER ---
 with tab3:
