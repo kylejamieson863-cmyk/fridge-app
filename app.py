@@ -223,17 +223,19 @@ def lookup_barcode(barcode_str):
     return f"Scanned Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
 def preprocess_receipt_image(image_bytes):
-    """Boosts contrast for thermal paper without cropping out product text."""
+    """Downscales photo to under 1MB for API limits and boosts contrast."""
     img = Image.open(io.BytesIO(image_bytes)).convert("L")
+    img.thumbnail((1200, 1200)) # Ensure photo remains under 1MB API ceiling
+    
     enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(1.8)
+    img = enhancer.enhance(1.6)
     
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG")
+    img.save(buffer, format="JPEG", quality=80)
     return buffer.getvalue()
 
 def process_receipt_image(image_bytes):
-    """Processes receipt photos by stripping SKU prefixes and price suffixes."""
+    """Parses M&S receipts using OCR.space with fallback regex filtering."""
     try:
         clean_bytes = preprocess_receipt_image(image_bytes)
         
@@ -241,15 +243,28 @@ def process_receipt_image(image_bytes):
         payload = {
             'apikey': 'helloworld',
             'language': 'eng',
-            'OCREngine': '2',
-            'isTable': False
+            'OCREngine': '1',
+            'scale': 'true',
+            'isTable': 'false'
         }
         files = [('file', ('receipt.jpg', clean_bytes, 'image/jpeg'))]
-        response = requests.post(url, data=payload, files=files, timeout=15).json()
         
-        parsed_results = response.get('ParsedResults', [])
+        res = requests.post(url, data=payload, files=files, timeout=20)
+        
+        if res.status_code != 200:
+            st.error(f"OCR Server Error: HTTP {res.status_code}")
+            return []
+            
+        data = res.json()
+        
+        if data.get("IsErroredOnProcessing"):
+            err_details = data.get("ErrorMessage", ["Unknown OCR error"])[0]
+            st.error(f"API Error: {err_details}")
+            return []
+
+        parsed_results = data.get('ParsedResults', [])
         if not parsed_results:
-            st.error("OCR service could not parse image text. Ensure photo is well-lit and flat.")
+            st.error("Could not parse image text. Please try again with clear lighting.")
             return []
             
         raw_text = parsed_results[0].get('ParsedText', '')
@@ -261,7 +276,7 @@ def process_receipt_image(image_bytes):
             "savings", "discount", "auth", "merchant", "pound", "http", "marks", "spencer",
             "manager", "street", "lane", "road", "tel:", "order", "server", "table",
             "balance to pay", "items:", "card tendered", "payment declined", "main street",
-            "largs", "ka30", "vat no"
+            "largs", "ka30", "vat no", "www", "before saving"
         ]
         
         extracted_items = []
@@ -276,31 +291,29 @@ def process_receipt_image(image_bytes):
             if any(k in line_lower for k in ignore_keywords):
                 continue
                 
-            # Step 1: Strip leading SKU/barcode numbers (e.g. "00429405 ")
+            # Strip leading SKU digits (e.g. "5059572001064 LEMON..." -> "LEMON...")
             line_no_sku = re.sub(r'^\d{5,14}\s*', '', clean_line)
             
-            # Step 2: Strip trailing prices and symbols (e.g. " £4.20<", " £1.35*")
-            cleaned_item = re.sub(r'\s*[\d£\$\.\,\<\*\-]+\s*$', '', line_no_sku).strip()
+            # Strip trailing price and flags (e.g. "...£4.20<", "...£1.35*")
+            cleaned_item = re.sub(r'[\s£\$\d\.\,\<\*\-]{2,}$', '', line_no_sku).strip()
             
-            # Skip lines that were purely numeric metadata
-            if not cleaned_item or cleaned_item.isdigit():
+            if not cleaned_item or cleaned_item.isdigit() or len(cleaned_item) < 3:
                 continue
                 
-            if len(cleaned_item) >= 3:
-                cat = "ready_meal"
-                item_lower = cleaned_item.lower()
-                if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish", "tandoori"]):
-                    cat = "meat"
-                elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip"]):
-                    cat = "dairy"
-                elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon", "lime"]):
-                    cat = "produce"
-                    
-                extracted_items.append({"name": cleaned_item.title(), "category": cat})
+            cat = "ready_meal"
+            item_lower = cleaned_item.lower()
+            if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish", "tandoori"]):
+                cat = "meat"
+            elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip"]):
+                cat = "dairy"
+            elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon", "lime"]):
+                cat = "produce"
                 
+            extracted_items.append({"name": cleaned_item.title(), "category": cat})
+            
         return extracted_items
     except Exception as e:
-        st.error(f"Receipt Processing Error: {str(e)}")
+        st.error(f"Receipt Exception: {str(e)}")
         return []
 
 def generate_smart_recipes(inventory):
@@ -480,8 +493,6 @@ with tab1:
                             })
                         st.success(f"Added {len(items_found)} items from receipt!")
                         st.rerun()
-                    else:
-                        st.warning("Could not read item lines clearly. Try taking a flatter photo with good lighting.")
 
         st.divider()
         st.subheader("3. Butcher Selection")
