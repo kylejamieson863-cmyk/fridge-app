@@ -12,11 +12,8 @@ st.set_page_config(page_title="Smart Pantry & Meal Planner", page_icon="🥩", l
 if "inventory" not in st.session_state:
     st.session_state.inventory = []
 
-if "last_scanned_code" not in st.session_state:
-    st.session_state.last_scanned_code = None
-
 # ---------------------------------------------------------
-# 2. HELPER FUNCTIONS
+# 2. HANDLE AUTO-SAVED BARCODE FROM CAMERA
 # ---------------------------------------------------------
 def lookup_barcode(barcode_str):
     """Fetches product details from public Open Food Facts API."""
@@ -46,6 +43,24 @@ def lookup_barcode(barcode_str):
             
     return f"M&S Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
+# Auto-catch scanned code sent via URL parameter
+if "scanned" in st.query_params:
+    scanned_code = st.query_params["scanned"]
+    st.query_params.clear() # Clear param so browser is ready for next scan
+    
+    item_name, category = lookup_barcode(scanned_code)
+    st.session_state.inventory.append({
+        "name": item_name,
+        "category": category,
+        "source": "M&S",
+        "barcode": scanned_code,
+        "expiry_date": datetime.today().strftime("%Y-%m-%d")
+    })
+    st.toast(f"✅ Auto-Saved: **{item_name}**", icon="🛒")
+
+# ---------------------------------------------------------
+# 3. HELPER FUNCTIONS
+# ---------------------------------------------------------
 def generate_smart_recipes(inventory):
     """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
@@ -142,7 +157,7 @@ def render_visual_fridge(inventory):
     st.html(fridge_html)
 
 # ---------------------------------------------------------
-# 3. INTERFACE TABS
+# 4. INTERFACE TABS
 # ---------------------------------------------------------
 st.title("🥩 Smart Fridge & Meal Planner")
 
@@ -160,45 +175,34 @@ with tab1:
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         
-        # Continuous Live Scanner JS Component
+        # HTML5 Continuous Scanner using Rear Camera
         scanner_html = """
         <div id="reader" style="width: 100%; border-radius: 12px; overflow: hidden;"></div>
         <div id="scan-status" style="text-align:center; font-weight:bold; color:#2e7d32; margin-top:8px;"></div>
         <script src="https://unpkg.com/html5-qrcode"></script>
         <script>
-            function sendToStreamlit(value) {
-                window.parent.postMessage({
-                    isStreamlitMessage: true,
-                    type: "streamlit:setComponentValue",
-                    value: value,
-                    apiVersion: 1
-                }, "*");
-            }
+            let isProcessing = false;
 
-            let isPaused = false;
+            function onScanSuccess(decodedText) {
+                if (isProcessing) return;
+                isProcessing = true;
 
-            function onScanSuccess(decodedText, decodedResult) {
-                if (isPaused) return;
-                isPaused = true;
+                if (navigator.vibrate) navigator.vibrate(100);
+                document.getElementById('scan-status').innerText = "✅ Saving code: " + decodedText + "...";
 
-                if (navigator.vibrate) navigator.vibrate(150);
-
-                document.getElementById('scan-status').innerText = "✅ Saved " + decodedText + "! Ready for next...";
-                sendToStreamlit(decodedText);
-
-                // Auto-reset camera listener after 2.5 second cooldown
-                setTimeout(() => {
-                    isPaused = false;
-                    document.getElementById('scan-status').innerText = "";
-                }, 2500);
+                // Pass barcode directly to top window URL to trigger Streamlit auto-save
+                const targetUrl = new URL(window.top.location.href);
+                targetUrl.searchParams.set("scanned", decodedText);
+                window.top.location.href = targetUrl.href;
             }
 
             const html5QrCode = new Html5Qrcode("reader");
             
             const config = {
-                fps: 20,
+                fps: 15,
                 qrbox: function(w, h) {
-                    return { width: Math.floor(w * 0.85), height: Math.floor(h * 0.55) };
+                    let minEdge = Math.min(w, h);
+                    return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.5) };
                 },
                 aspectRatio: 1.333333,
                 experimentalFeatures: {
@@ -206,39 +210,15 @@ with tab1:
                 }
             };
 
-            // Force back camera (environment) with high resolution constraints
-            const cameraConstraints = {
-                facingMode: { exact: "environment" },
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-
-            html5QrCode.start(cameraConstraints, config, onScanSuccess)
+            // Force rear camera (environment mode)
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
                 .catch(err => {
-                    // Fallback to general environment facing mode if exact constraint fails
-                    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                        .catch(err2 => {
-                            html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
-                        });
+                    html5QrCode.start({ facingMode: "user" }, config, onScanSuccess);
                 });
         </script>
         """
         
-        scanned_code = components.html(scanner_html, height=360, key="live_scanner")
-        
-        # Catch scanned code sent from JS component
-        if scanned_code and scanned_code != st.session_state.last_scanned_code:
-            st.session_state.last_scanned_code = scanned_code
-            item_name, category = lookup_barcode(scanned_code)
-            
-            st.session_state.inventory.append({
-                "name": item_name,
-                "category": category,
-                "source": "M&S",
-                "barcode": scanned_code,
-                "expiry_date": item_exp.strftime("%Y-%m-%d")
-            })
-            st.toast(f"✅ Auto-Saved: **{item_name}**", icon="🛒")
+        components.html(scanner_html, height=360)
 
         st.divider()
         st.caption("Quick Manual Entry:")
@@ -291,7 +271,6 @@ with tab2:
         
         if st.button("🗑️ Clear Entire Fridge"):
             st.session_state.inventory = []
-            st.session_state.last_scanned_code = None
             st.rerun()
     else:
         st.info("Your fridge is empty! Use the Trolley Scanner tab to add items.")
