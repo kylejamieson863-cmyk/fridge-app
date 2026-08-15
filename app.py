@@ -120,17 +120,19 @@ ms_css = """
         border: 1px solid #CCCCCC !important;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 2. BRANDED HEADER (Rendered First for All Users)
 # ---------------------------------------------------------
-st.markdown("""
+header_html = """
 <div class="ms-header">
     <div class="ms-brand">SMART PANTRY</div>
     <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
 </div>
-""", unsafe_allow_html=True)
+"""
+st.markdown(header_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 3. USER AUTHENTICATION & SIGN-UP SETUP
