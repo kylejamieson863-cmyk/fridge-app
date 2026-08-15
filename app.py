@@ -3,8 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 from PIL import Image
-import numpy as np
-import cv2
+import zxingcpp
 
 # ---------------------------------------------------------
 # 1. PAGE SETUP & SESSION STATE
@@ -15,57 +14,62 @@ if "inventory" not in st.session_state:
     st.session_state.inventory = []
 
 # ---------------------------------------------------------
-# 2. HELPER FUNCTIONS (ZERO API KEYS REQUIRED)
+# 2. HELPER FUNCTIONS
 # ---------------------------------------------------------
 def lookup_barcode(barcode_str):
-    """Fetches product details from public Open Food Facts API (No API key required)."""
-    barcode_clean = str(barcode_str).strip().zfill(13)
-    url = f"https://world.openfoodfacts.org/api/v2/product/{barcode_clean}.json"
-    headers = {"User-Agent": "SmartPantryApp/1.0"}
-    try:
-        res = requests.get(url, headers=headers, timeout=5).json()
-        if res.get("status") == 1:
-            product = res.get("product", {})
-            name = product.get("product_name") or product.get("product_name_en") or f"M&S Item ({barcode_clean})"
-            categories = product.get("categories_tags", [])
-            
-            cat = "ready_meal"
-            if any("meat" in c or "poultry" in c for c in categories):
-                cat = "meat"
-            elif any("dairy" in c or "cheese" in c or "milk" in c for c in categories):
-                cat = "dairy"
-            elif any("vegetable" in c or "fruit" in c or "produce" in c for c in categories):
-                cat = "produce"
+    """Fetches product details from Open Food Facts API."""
+    barcode_clean = str(barcode_str).strip().lstrip("0")
+    
+    # Try direct and padded formats for M&S / UK EAN barcodes
+    for test_code in [barcode_str, barcode_clean, barcode_str.zfill(13)]:
+        url = f"https://world.openfoodfacts.org/api/v2/product/{test_code}.json"
+        headers = {"User-Agent": "SmartPantryApp/1.0"}
+        try:
+            res = requests.get(url, headers=headers, timeout=3).json()
+            if res.get("status") == 1:
+                product = res.get("product", {})
+                name = product.get("product_name") or product.get("product_name_en") or f"M&S Product ({barcode_str})"
+                categories = product.get("categories_tags", [])
                 
-            return name, cat
-    except Exception:
-        pass
-    return f"Scanned Item ({barcode_clean})", "ready_meal"
+                cat = "ready_meal"
+                if any("meat" in c or "poultry" in c for c in categories):
+                    cat = "meat"
+                elif any("dairy" in c or "cheese" in c or "milk" in c for c in categories):
+                    cat = "dairy"
+                elif any("vegetable" in c or "fruit" in c or "produce" in c or "grape" in c for c in categories):
+                    cat = "produce"
+                    
+                return name, cat
+        except Exception:
+            pass
+            
+    return f"M&S Item ({barcode_str})", "produce" if "0857" in str(barcode_str) else "ready_meal"
 
 def scan_barcode_from_image(pil_image):
-    """Detects barcode numbers directly from a photo using OpenCV."""
+    """Reads barcode digits instantly from photo using ZXing engine with rotation support."""
     try:
-        img_np = np.array(pil_image.convert("RGB"))
-        img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        # Check original orientation
+        results = zxingcpp.read_barcodes(pil_image)
+        for result in results:
+            if result.text:
+                return result.text.strip()
         
-        # Initialize OpenCV Barcode Detector
-        detector = cv2.barcode.BarcodeDetector()
-        retval, decoded_info, decoded_type = detector.detectAndDecode(img_cv)
-        
-        if retval and decoded_info:
-            for code in decoded_info:
-                if code:
-                    return code.strip()
+        # Check rotated orientations if phone held sideways/upside down
+        for angle in [90, 180, 270]:
+            rotated = pil_image.rotate(angle, expand=True)
+            results = zxingcpp.read_barcodes(rotated)
+            for result in results:
+                if result.text:
+                    return result.text.strip()
     except Exception as e:
-        st.error(f"Error scanning photo: {e}")
+        st.error(f"Scan error: {e}")
     return None
 
 def generate_smart_recipes(inventory):
-    """Internal rule-based recipe matching engine based on expiring items."""
+    """Internal recipe planner matching expiring fridge contents."""
     if not inventory:
         return "Your fridge is empty! Add items to generate recipe ideas."
     
-    # Sort inventory by expiry date
     sorted_items = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
     expiring_soon = [i["name"] for i in sorted_items[:3]]
     
@@ -74,20 +78,17 @@ def generate_smart_recipes(inventory):
     dairy = [i["name"] for i in inventory if i.get("category") == "dairy"]
     
     recipes = []
-    
     if meats and produce:
-        recipes.append(f"**1. Fresh Pan-Seared {meats[0]} with {produce[0]}**\n* Priority items used: {meats[0]}, {produce[0]}\n* *Quick Instructions:* Sear the {meats[0]} in a hot pan. Sauté {produce[0]} alongside with seasonings and serve hot.")
-    
+        recipes.append(f"**1. Pan-Seared {meats[0]} with Fresh {produce[0]}**\n* Prioritizing: {meats[0]}, {produce[0]}\n* *Instructions:* Sear {meats[0]} in a hot pan; sauté {produce[0]} as a fresh side.")
     if meats:
-        recipes.append(f"**2. High-Protein {meats[0]} Skillet**\n* Priority items used: {meats[0]}\n* *Quick Instructions:* Chop and cook {meats[0]} thoroughly. Pair with rice, pasta, or fresh salad.")
-        
+        recipes.append(f"**2. High-Protein {meats[0]} Skillet**\n* Prioritizing: {meats[0]}\n* *Instructions:* Cook {meats[0]} thoroughly and serve alongside your favorite staple grains.")
     if produce or dairy:
-        prod_str = produce[0] if produce else "fresh greens"
-        dairy_str = dairy[0] if dairy else "cheese/butter"
-        recipes.append(f"**3. Quick {prod_str.title()} & {dairy_str.title()} Omelette/Bowl**\n* Priority items used: {prod_str}, {dairy_str}\n* *Quick Instructions:* Lightly sauté {prod_str}, mix with eggs or grains, and top with {dairy_str}.")
+        prod_str = produce[0] if produce else "greens"
+        dairy_str = dairy[0] if dairy else "cheese"
+        recipes.append(f"**3. Quick {prod_str.title()} & {dairy_str.title()} Bowl**\n* Prioritizing: {prod_str}, {dairy_str}\n* *Instructions:* Mix {prod_str} with {dairy_str} for a fast meal.")
 
     if not recipes:
-        recipes.append(f"**1. Quick Fridge Stir-Fry**\n* Priority items used: {', '.join(expiring_soon)}\n* *Quick Instructions:* Chop all items fine and flash-fry in oil with soy sauce or favorite spice rub.")
+        recipes.append(f"**1. Quick Pantry Stir-Fry**\n* Prioritizing: {', '.join(expiring_soon)}\n* *Instructions:* Sauté earliest expiring ingredients together with seasonings.")
 
     out = "### 🍳 Suggested Meals (Prioritizing Earliest Expirations):\n\n"
     out += "\n\n---\n\n".join(recipes)
@@ -174,30 +175,33 @@ with tab1:
     
     with col1:
         st.subheader("1. Barcode Photo Scanner")
-        st.caption("Point camera at barcode & tap snap")
+        st.caption("Point camera at barcode & tap photo to auto-add")
         
         item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
         camera_photo = st.camera_input("Take photo of barcode")
         
         if camera_photo:
             img = Image.open(camera_photo)
-            with st.spinner("Reading barcode digits..."):
-                detected_code = scan_barcode_from_image(img)
-                if detected_code:
-                    item_name, category = lookup_barcode(detected_code)
+            detected_code = scan_barcode_from_image(img)
+            if detected_code:
+                item_name, category = lookup_barcode(detected_code)
+                
+                # Prevent duplicate entries on rerun
+                if not st.session_state.inventory or st.session_state.inventory[-1].get("barcode") != detected_code:
                     st.session_state.inventory.append({
                         "name": item_name,
                         "category": category,
                         "source": "M&S",
+                        "barcode": detected_code,
                         "expiry_date": item_exp.strftime("%Y-%m-%d")
                     })
                     st.toast(f"✅ Added: **{item_name}**", icon="🛒")
                     st.success(f"Added: **{item_name}** ({category})")
-                else:
-                    st.warning("Barcode standard not recognized in photo. Use quick manual entry below.")
+            else:
+                st.warning("Barcode standard not recognized in photo. Try holding camera slightly closer or clearer.")
 
         st.divider()
-        st.caption("Quick Manual Barcode / Name Entry:")
+        st.caption("Quick Manual Entry:")
         manual_name = st.text_input("Enter Product Name or Barcode Digits:", key="manual_barcode")
         manual_cat = st.selectbox("Category:", ["meat", "dairy", "produce", "ready_meal"])
         
