@@ -5,7 +5,7 @@ import requests
 import pandas as pd
 import re
 import io
-from datetime import datetime, timedelta
+from datetime import datetime
 from PIL import Image, ImageEnhance
 from supabase import create_client
 
@@ -27,6 +27,11 @@ ms_css = """
         background-color: #0F172A;
         font-family: 'Montserrat', sans-serif;
         color: #F8FAFC;
+    }
+
+    /* Prevent mobile keyboard from popping up on date inputs */
+    input[type="text"][aria-autocomplete="list"] {
+        inputmode: none !important;
     }
 
     /* Header */
@@ -190,6 +195,23 @@ ms_css = """
 </style>
 """
 st.markdown(ms_css, unsafe_allow_html=True)
+
+# JavaScript snippet to enforce readonly mode on all date input fields across mobile browsers
+st.components.v1.html(
+    """
+    <script>
+    const suppressKeyboard = () => {
+        const inputs = window.parent.document.querySelectorAll('input[aria-autocomplete="list"]');
+        inputs.forEach(input => {
+            input.setAttribute('readonly', 'readonly');
+            input.setAttribute('inputmode', 'none');
+        });
+    };
+    setInterval(suppressKeyboard, 500);
+    </script>
+    """,
+    height=0,
+)
 
 # ---------------------------------------------------------
 # 2. BRANDED HEADER & SUPABASE CLOUD CONNECTION
