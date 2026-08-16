@@ -7,4 +7,4 @@ numpy
 opencv-python-headless
 zxing-cpp
 streamlit-authenticator 
-st-gsheets-connection
+supabase
