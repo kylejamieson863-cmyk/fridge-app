@@ -5,7 +5,7 @@ import requests
 import pandas as pd
 import re
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image, ImageEnhance
 from supabase import create_client
 
@@ -92,26 +92,38 @@ ms_css = """
         font-weight: 600;
     }
 
-    /* Global Buttons */
+    /* Large Supermarket Touch Buttons */
     .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
         border: 1px solid #C5A059 !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         font-family: 'Montserrat', sans-serif !important;
-        font-weight: 600 !important;
-        font-size: 13px !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
         letter-spacing: 1px !important;
         text-transform: uppercase !important;
-        padding: 8px 16px !important;
+        padding: 12px 18px !important;
         transition: all 0.2s ease !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         width: 100%;
+        min-height: 48px !important;
     }
     .stButton > button:hover, form [data-testid="stFormSubmitButton"] > button:hover {
         background-color: #C5A059 !important;
         border-color: #C5A059 !important;
         color: #0F172A !important;
+    }
+
+    /* Pending Scan Supermarket Card */
+    .scan-card {
+        background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+        border: 2px solid #C5A059;
+        border-radius: 16px;
+        padding: 20px;
+        margin-top: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
 
     /* ---------------------------------------------------------
@@ -141,7 +153,6 @@ ms_css = """
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
 
-    /* Glass Shelf Line styling */
     .glass-shelf-line {
         height: 8px;
         background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.8), rgba(255,255,255,0.1));
@@ -191,7 +202,6 @@ header_html = """
 """
 st.markdown(header_html, unsafe_allow_html=True)
 
-# Initialize Supabase Client
 @st.cache_resource
 def init_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -201,7 +211,6 @@ def init_supabase():
 supabase = init_supabase()
 
 def load_user_inventory(user_id):
-    """Fetch stored fridge items for a specific user ID from Supabase."""
     try:
         response = supabase.table("fridge_inventory").select("*").eq("username", str(user_id)).execute()
         rows = response.data or []
@@ -223,13 +232,11 @@ def load_user_inventory(user_id):
             })
         return inventory
     except Exception as e:
-        st.error(f"Error loading inventory from cloud: {e}")
+        st.error(f"Error loading inventory: {e}")
         return []
 
 def save_user_inventory(user_id, inventory):
-    """Overwrite user inventory in Supabase."""
     try:
-        # Clear previous items for this user to keep data cleanly synced
         supabase.table("fridge_inventory").delete().eq("username", str(user_id)).execute()
         
         if inventory:
@@ -250,7 +257,7 @@ def save_user_inventory(user_id, inventory):
                 })
             supabase.table("fridge_inventory").insert(new_rows).execute()
     except Exception as e:
-        st.error(f"Error saving to cloud: {e}")
+        st.error(f"Error saving inventory: {e}")
 
 # ---------------------------------------------------------
 # 3. PROFESSIONAL SUPABASE AUTHENTICATION
@@ -262,7 +269,7 @@ def login_user(email, password):
     try:
         res = supabase.auth.sign_in_with_password({"email": email, "password": password})
         st.session_state.user = res.user
-        st.success("Successfully logged in!")
+        st.success("Logged in successfully!")
         st.rerun()
     except Exception as e:
         st.error(f"Login failed: {e}")
@@ -270,7 +277,7 @@ def login_user(email, password):
 def register_user(email, password):
     try:
         res = supabase.auth.sign_up({"email": email, "password": password})
-        st.success("Account created! If email confirmation is enabled on Supabase, check your inbox before logging in.")
+        st.success("Account registered successfully!")
     except Exception as e:
         st.error(f"Registration failed: {e}")
 
@@ -284,7 +291,6 @@ def logout_user():
     except Exception as e:
         st.error(f"Logout failed: {e}")
 
-# Render Login / Signup Interface if Unauthenticated
 if not st.session_state.user:
     auth_col1, auth_col2, auth_col3 = st.columns([1, 2, 1])
     with auth_col2:
@@ -332,6 +338,9 @@ active_inv = st.session_state.active_inv
 if "last_processed_code" not in st.session_state:
     st.session_state.last_processed_code = None
 
+if "pending_scanned_item" not in st.session_state:
+    st.session_state.pending_scanned_item = None
+
 if "staged_receipt_items" not in st.session_state:
     st.session_state.staged_receipt_items = []
 
@@ -344,7 +353,7 @@ with top_col2:
         logout_user()
 
 # ---------------------------------------------------------
-# 5. CREATE NATIVE SCANNER COMPONENT
+# 5. NATIVE BARCODE SCANNER COMPONENT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -355,7 +364,7 @@ HTML_SCANNER_CODE = """
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; }
-    #reader { width: 100%; height: 300px; border-radius: 12px; overflow: hidden; background: #000; display: flex !important; align-items: center !important; justify-content: center !important; position: relative !important; border: 2px solid #C5A059; }
+    #reader { width: 100%; height: 280px; border-radius: 12px; overflow: hidden; background: #000; display: flex !important; align-items: center !important; justify-content: center !important; position: relative !important; border: 2px solid #C5A059; }
     #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; }
     #reader__scan_region { position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; margin: 0 !important; }
     #status { text-align: center; font-weight: 600; color: #C5A059; margin-top: 10px; font-size: 13px; letter-spacing: 0.5px; min-height: 22px; }
@@ -363,7 +372,7 @@ HTML_SCANNER_CODE = """
 </head>
 <body>
   <div id="reader"></div>
-  <div id="status">📷 Initializing scanner...</div>
+  <div id="status">📷 Camera Active</div>
 
   <script>
     function sendMessage(type, data) {
@@ -371,7 +380,7 @@ HTML_SCANNER_CODE = """
     }
 
     sendMessage("streamlit:componentReady", {apiVersion: 1});
-    sendMessage("streamlit:setFrameHeight", {height: 350});
+    sendMessage("streamlit:setFrameHeight", {height: 330});
 
     let isCooldown = false;
 
@@ -384,7 +393,7 @@ HTML_SCANNER_CODE = """
         isCooldown = true;
 
         if (navigator.vibrate) navigator.vibrate(120);
-        document.getElementById('status').innerText = "✨ SAVED " + decodedText + " TO FRIDGE";
+        document.getElementById('status').innerText = "✨ BARCODE DETECTED!";
         
         sendResult(decodedText);
 
@@ -568,31 +577,65 @@ with tab1:
     
     with col1:
         st.subheader("1. Barcode Scanner")
-        st.caption("Point camera at barcode — items auto-save to your fridge.")
+        st.caption("Scan items directly in the aisle")
         
-        item_exp = st.date_input("Use-By Date:", datetime.today(), key="scan_exp_date")
+        scanned_code = barcode_scanner(key="live_barcode_reader")
         
-        scanned_code = barcode_scanner(height=360, key="live_barcode_reader")
-        
+        # Intercept scanned code to trigger custom date modal
         if scanned_code and scanned_code != st.session_state.last_processed_code:
             st.session_state.last_processed_code = scanned_code
             item_name, category, nutrition = lookup_barcode(scanned_code)
-            
-            active_inv.append({
-                "id": datetime.now().timestamp(),
+            st.session_state.pending_scanned_item = {
                 "name": item_name,
                 "category": category,
-                "portion": 1.0,
-                "nutrition": nutrition,
-                "expiry_date": item_exp.strftime("%Y-%m-%d")
-            })
-            save_user_inventory(current_user_id, active_inv)
-            st.toast(f"✨ Saved to your Fridge: **{item_name}**", icon="🛒")
+                "nutrition": nutrition
+            }
+            st.rerun()
+
+        # SUPERMARKET CUSTOM DATE SELECTION MODAL
+        if st.session_state.pending_scanned_item:
+            item = st.session_state.pending_scanned_item
+
+            st.markdown(f"""
+            <div class="scan-card">
+                <h3 style="color: #C5A059; margin-top:0;">🛒 Item Scanned</h3>
+                <h2 style="color: #FFFFFF; margin-bottom:10px;">{item['name']}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Custom Date Picker Input
+            final_date_input = st.date_input(
+                "📅 Select Use-By / Best Before Date:",
+                value=datetime.today().date(),
+                key="supermarket_custom_date"
+            )
+
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                if st.button("✅ Confirm & Save"):
+                    active_inv.append({
+                        "id": datetime.now().timestamp(),
+                        "name": item["name"],
+                        "category": item["category"],
+                        "portion": 1.0,
+                        "nutrition": item["nutrition"],
+                        "expiry_date": final_date_input.strftime("%Y-%m-%d")
+                    })
+                    save_user_inventory(current_user_id, active_inv)
+                    st.session_state.pending_scanned_item = None
+                    st.toast(f"✨ Added to Fridge: **{item['name']}**", icon="🛒")
+                    st.rerun()
+
+            with c_btn2:
+                if st.button("❌ Cancel"):
+                    st.session_state.pending_scanned_item = None
+                    st.rerun()
 
         st.divider()
         st.caption("Quick Manual Lookup:")
         manual_name = st.text_input("Product Name or Barcode Digits:", key="manual_barcode")
         manual_cat = st.selectbox("Category:", ["meat", "dairy", "produce", "ready_meal"])
+        manual_date = st.date_input("Use-By Date:", datetime.today(), key="manual_exp_date")
         
         if st.button("Add Item to Fridge"):
             if manual_name:
@@ -608,7 +651,7 @@ with tab1:
                     "category": cat,
                     "portion": 1.0,
                     "nutrition": nutrition,
-                    "expiry_date": item_exp.strftime("%Y-%m-%d")
+                    "expiry_date": manual_date.strftime("%Y-%m-%d")
                 })
                 save_user_inventory(current_user_id, active_inv)
                 st.success(f"Added: **{name}**")
@@ -634,7 +677,7 @@ with tab1:
             
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button("✅ Confirm & Save"):
+                if st.button("✅ Confirm & Save Receipts"):
                     confirmed_items = edited_df.to_dict("records")
                     for item in confirmed_items:
                         active_inv.append({
@@ -650,7 +693,7 @@ with tab1:
                     st.success("Saved items to Fridge!")
                     st.rerun()
             with col_b:
-                if st.button("❌ Discard"):
+                if st.button("❌ Discard Receipt"):
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
