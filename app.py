@@ -8,7 +8,7 @@ import re
 import io
 from datetime import datetime
 from PIL import Image, ImageEnhance
-from streamlit_gsheets import GSheetsConnection
+from supabase import create_client
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIG & LUXURY STYLING INJECTION
@@ -182,7 +182,7 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. BRANDED HEADER & CLOUD STORAGE CONNECTION
+# 2. BRANDED HEADER & SUPABASE CLOUD CONNECTION
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
@@ -192,63 +192,64 @@ header_html = """
 """
 st.markdown(header_html, unsafe_allow_html=True)
 
-# Initialize Google Sheets connection
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Initialize Supabase Client
+@st.cache_resource
+def init_supabase():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_supabase()
 
 def load_user_inventory(username):
-    """Fetch stored fridge items for a specific user from Google Sheets."""
+    """Fetch stored fridge items for a specific user from Supabase."""
     try:
-        df = conn.read(ttl=0)
-        if df.empty or "username" not in df.columns:
-            return []
+        response = supabase.table("fridge_inventory").select("*").eq("username", username).execute()
+        rows = response.data or []
         
-        user_rows = df[df["username"] == username]
         inventory = []
-        for _, row in user_rows.iterrows():
+        for row in rows:
             inventory.append({
-                "id": float(row["id"]),
+                "id": float(row["item_id"]),
                 "name": str(row["name"]),
                 "category": str(row["category"]),
                 "portion": float(row["portion"]),
                 "nutrition": {
-                    "calories": str(row["calories"]),
-                    "protein": str(row["protein"]),
-                    "carbs": str(row["carbs"]),
-                    "fat": str(row["fat"])
+                    "calories": str(row.get("calories", "N/A")),
+                    "protein": str(row.get("protein", "N/A")),
+                    "carbs": str(row.get("carbs", "N/A")),
+                    "fat": str(row.get("fat", "N/A"))
                 },
-                "expiry_date": str(row["expiry_date"])
+                "expiry_date": str(row.get("expiry_date", ""))
             })
         return inventory
-    except Exception:
+    except Exception as e:
+        st.error(f"Error loading inventory from cloud: {e}")
         return []
 
 def save_user_inventory(username, inventory):
-    """Overwrite user inventory in Google Sheets."""
+    """Overwrite user inventory in Supabase."""
     try:
-        df = conn.read(ttl=0)
-        if not df.empty and "username" in df.columns:
-            df = df[df["username"] != username]
-        else:
-            df = pd.DataFrame()
-            
-        new_rows = []
-        for item in inventory:
-            nut = item.get("nutrition", {})
-            new_rows.append({
-                "username": username,
-                "id": item["id"],
-                "name": item["name"],
-                "category": item["category"],
-                "portion": item["portion"],
-                "calories": nut.get("calories", "N/A"),
-                "protein": nut.get("protein", "N/A"),
-                "carbs": nut.get("carbs", "N/A"),
-                "fat": nut.get("fat", "N/A"),
-                "expiry_date": item.get("expiry_date", "")
-            })
-            
-        updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) if not df.empty else pd.DataFrame(new_rows)
-        conn.update(data=updated_df)
+        # Clear previous items for this user to keep data cleanly synced
+        supabase.table("fridge_inventory").delete().eq("username", username).execute()
+        
+        if inventory:
+            new_rows = []
+            for item in inventory:
+                nut = item.get("nutrition", {})
+                new_rows.append({
+                    "username": username,
+                    "item_id": item["id"],
+                    "name": item["name"],
+                    "category": item["category"],
+                    "portion": item["portion"],
+                    "calories": nut.get("calories", "N/A"),
+                    "protein": nut.get("protein", "N/A"),
+                    "carbs": nut.get("carbs", "N/A"),
+                    "fat": nut.get("fat", "N/A"),
+                    "expiry_date": item.get("expiry_date", "")
+                })
+            supabase.table("fridge_inventory").insert(new_rows).execute()
     except Exception as e:
         st.error(f"Error saving to cloud: {e}")
 
