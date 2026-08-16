@@ -1,7 +1,6 @@
 import os
 import streamlit as st
 import streamlit.components.v1 as components
-import streamlit_authenticator as stauth
 import requests
 import pandas as pd
 import re
@@ -201,10 +200,10 @@ def init_supabase():
 
 supabase = init_supabase()
 
-def load_user_inventory(username):
-    """Fetch stored fridge items for a specific user from Supabase."""
+def load_user_inventory(user_id):
+    """Fetch stored fridge items for a specific user ID from Supabase."""
     try:
-        response = supabase.table("fridge_inventory").select("*").eq("username", username).execute()
+        response = supabase.table("fridge_inventory").select("*").eq("username", str(user_id)).execute()
         rows = response.data or []
         
         inventory = []
@@ -227,18 +226,18 @@ def load_user_inventory(username):
         st.error(f"Error loading inventory from cloud: {e}")
         return []
 
-def save_user_inventory(username, inventory):
+def save_user_inventory(user_id, inventory):
     """Overwrite user inventory in Supabase."""
     try:
         # Clear previous items for this user to keep data cleanly synced
-        supabase.table("fridge_inventory").delete().eq("username", username).execute()
+        supabase.table("fridge_inventory").delete().eq("username", str(user_id)).execute()
         
         if inventory:
             new_rows = []
             for item in inventory:
                 nut = item.get("nutrition", {})
                 new_rows.append({
-                    "username": username,
+                    "username": str(user_id),
                     "item_id": item["id"],
                     "name": item["name"],
                     "category": item["category"],
@@ -254,79 +253,79 @@ def save_user_inventory(username, inventory):
         st.error(f"Error saving to cloud: {e}")
 
 # ---------------------------------------------------------
-# 3. USER AUTHENTICATION & SIGN-UP SETUP
+# 3. PROFESSIONAL SUPABASE AUTHENTICATION
 # ---------------------------------------------------------
-if "users_db" not in st.session_state:
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+def login_user(email, password):
     try:
-        default_pw = stauth.Hasher.hash("password123")
-    except Exception:
-        default_pw = stauth.Hasher(["password123"]).generate()[0]
+        res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        st.session_state.user = res.user
+        st.success("Successfully logged in!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Login failed: {e}")
 
-    st.session_state.users_db = {
-        "usernames": {
-            "user1": {
-                "name": "Default Account",
-                "password": default_pw
-            }
-        }
-    }
+def register_user(email, password):
+    try:
+        res = supabase.auth.sign_up({"email": email, "password": password})
+        st.success("Account created! If email confirmation is enabled on Supabase, check your inbox before logging in.")
+    except Exception as e:
+        st.error(f"Registration failed: {e}")
 
-authenticator = stauth.Authenticate(
-    st.session_state.users_db,
-    "pantry_cookie_name",
-    "pantry_signature_key",
-    cookie_expiry_days=30
-)
+def logout_user():
+    try:
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.session_state.active_inv = []
+        st.session_state.loaded_user = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Logout failed: {e}")
 
-if not st.session_state.get("authentication_status"):
+# Render Login / Signup Interface if Unauthenticated
+if not st.session_state.user:
     auth_col1, auth_col2, auth_col3 = st.columns([1, 2, 1])
     with auth_col2:
         auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Register New Account"])
 
         with auth_tab1:
-            try:
-                authenticator.login()
-            except Exception:
-                authenticator.login("Login", "main")
+            with st.form("login_form"):
+                st.markdown("<h3 style='text-align: center; color: #C5A059;'>Member Access</h3>", unsafe_allow_html=True)
+                login_email = st.text_input("Email Address")
+                login_password = st.text_input("Password", type="password")
+                submit_login = st.form_submit_button("Sign In")
+
+                if submit_login:
+                    if login_email and login_password:
+                        login_user(login_email, login_password)
+                    else:
+                        st.error("Please fill in all fields.")
 
         with auth_tab2:
             with st.form("signup_form"):
-                st.markdown("<h3 style='text-align: center; color: #C5A059;'>Create Your Account</h3>", unsafe_allow_html=True)
-                new_username = st.text_input("Username / Email")
-                new_name = st.text_input("Full Name")
-                new_pw = st.text_input("Password", type="password")
+                st.markdown("<h3 style='text-align: center; color: #C5A059;'>Create an Account</h3>", unsafe_allow_html=True)
+                reg_email = st.text_input("Email Address")
+                reg_password = st.text_input("Password", type="password")
                 submit_signup = st.form_submit_button("Register Account")
 
                 if submit_signup:
-                    if new_username and new_pw:
-                        try:
-                            hashed_pw = stauth.Hasher.hash(new_pw)
-                        except Exception:
-                            hashed_pw = stauth.Hasher([new_pw]).generate()[0]
-
-                        st.session_state.users_db["usernames"][new_username] = {
-                            "name": new_name if new_name else new_username,
-                            "password": hashed_pw
-                        }
-                        st.success("Account created successfully! Switch to the Login tab to sign in.")
+                    if reg_email and reg_password:
+                        register_user(reg_email, reg_password)
                     else:
-                        st.error("Please provide both a username and password.")
-
-if st.session_state.get("authentication_status") is False:
-    st.error("Username/password is incorrect")
-    st.stop()
-elif st.session_state.get("authentication_status") is None:
-    st.info("Please log in or create an account above to access your private fridge.")
+                        st.error("Please fill in all fields.")
     st.stop()
 
 # ---------------------------------------------------------
 # 4. ISOLATED SESSION & BARCODE SETUP
 # ---------------------------------------------------------
-current_username = st.session_state.get("username")
+current_user_id = st.session_state.user.id
+current_user_email = st.session_state.user.email
 
-if "loaded_user" not in st.session_state or st.session_state.loaded_user != current_username:
-    st.session_state.active_inv = load_user_inventory(current_username)
-    st.session_state.loaded_user = current_username
+if "loaded_user" not in st.session_state or st.session_state.loaded_user != current_user_id:
+    st.session_state.active_inv = load_user_inventory(current_user_id)
+    st.session_state.loaded_user = current_user_id
 
 active_inv = st.session_state.active_inv
 
@@ -336,18 +335,13 @@ if "last_processed_code" not in st.session_state:
 if "staged_receipt_items" not in st.session_state:
     st.session_state.staged_receipt_items = []
 
-# Top User Info & Logout Button
+# Top User Info Bar
 top_col1, top_col2 = st.columns([4, 1])
 with top_col1:
-    user_display = st.session_state.get("name", current_username)
-    st.write(f"Logged in as: **{user_display}**")
+    st.write(f"Logged in as: **{current_user_email}**")
 with top_col2:
-    try:
-        authenticator.logout("Logout", "main")
-    except Exception:
-        if st.button("Logout"):
-            st.session_state.clear()
-            st.rerun()
+    if st.button("Logout"):
+        logout_user()
 
 # ---------------------------------------------------------
 # 5. CREATE NATIVE SCANNER COMPONENT
@@ -592,7 +586,7 @@ with tab1:
                 "nutrition": nutrition,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
-            save_user_inventory(current_username, active_inv)
+            save_user_inventory(current_user_id, active_inv)
             st.toast(f"✨ Saved to your Fridge: **{item_name}**", icon="🛒")
 
         st.divider()
@@ -616,7 +610,7 @@ with tab1:
                     "nutrition": nutrition,
                     "expiry_date": item_exp.strftime("%Y-%m-%d")
                 })
-                save_user_inventory(current_username, active_inv)
+                save_user_inventory(current_user_id, active_inv)
                 st.success(f"Added: **{name}**")
 
     with col2:
@@ -651,7 +645,7 @@ with tab1:
                             "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
                             "expiry_date": receipt_date.strftime("%Y-%m-%d")
                         })
-                    save_user_inventory(current_username, active_inv)
+                    save_user_inventory(current_user_id, active_inv)
                     st.session_state.staged_receipt_items = []
                     st.success("Saved items to Fridge!")
                     st.rerun()
@@ -707,19 +701,19 @@ with tab2:
                             item["portion"] -= 0.25
                             if item["portion"] <= 0:
                                 active_inv.remove(item)
-                            save_user_inventory(current_username, active_inv)
+                            save_user_inventory(current_user_id, active_inv)
                             st.rerun()
                             
                         if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
                             item["portion"] -= 0.50
                             if item["portion"] <= 0:
                                 active_inv.remove(item)
-                            save_user_inventory(current_username, active_inv)
+                            save_user_inventory(current_user_id, active_inv)
                             st.rerun()
                             
                         if p_col3.button("Finished", key=f"finish_{item['id']}"):
                             active_inv.remove(item)
-                            save_user_inventory(current_username, active_inv)
+                            save_user_inventory(current_user_id, active_inv)
                             st.rerun()
 
         st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
@@ -730,7 +724,7 @@ with tab2:
         st.divider()
         if st.button("🗑️ Clear Entire Fridge"):
             st.session_state.active_inv = []
-            save_user_inventory(current_username, [])
+            save_user_inventory(current_user_id, [])
             st.rerun()
 
 # --- TAB 3: MEAL PLANNER ---
