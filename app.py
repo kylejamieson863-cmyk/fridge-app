@@ -29,9 +29,10 @@ ms_css = """
         color: #F8FAFC;
     }
 
-    /* Prevent mobile keyboard from popping up on date inputs */
-    input[type="text"][aria-autocomplete="list"] {
+    /* Target ONLY Date Inputs to prevent mobile keyboard popup */
+    div[data-testid="stDateInput"] input {
         inputmode: none !important;
+        cursor: pointer !important;
     }
 
     /* Header */
@@ -196,18 +197,18 @@ ms_css = """
 """
 st.markdown(ms_css, unsafe_allow_html=True)
 
-# JavaScript snippet to enforce readonly mode on all date input fields across mobile browsers
+# Precision JavaScript: Only apply readonly to stDateInput elements
 st.components.v1.html(
     """
     <script>
-    const suppressKeyboard = () => {
-        const inputs = window.parent.document.querySelectorAll('input[aria-autocomplete="list"]');
-        inputs.forEach(input => {
+    const suppressDateKeyboard = () => {
+        const dateInputs = window.parent.document.querySelectorAll('div[data-testid="stDateInput"] input');
+        dateInputs.forEach(input => {
             input.setAttribute('readonly', 'readonly');
             input.setAttribute('inputmode', 'none');
         });
     };
-    setInterval(suppressKeyboard, 500);
+    setInterval(suppressDateKeyboard, 500);
     </script>
     """,
     height=0,
