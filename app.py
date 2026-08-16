@@ -170,10 +170,9 @@ ms_css = """
         margin-bottom: 25px;
     }
 
+    /* DYNAMIC EXPIRY COLOR CODED POPOVERS */
     div[data-testid="stPopover"] > button {
         background: linear-gradient(135deg, #1E293B 0%, #334155 100%) !important;
-        border: 1px solid #475569 !important;
-        border-bottom: 3px solid #C5A059 !important;
         border-radius: 10px !important;
         color: #F8FAFC !important;
         font-weight: 600 !important;
@@ -182,8 +181,26 @@ ms_css = """
         text-align: left !important;
     }
 
+    /* Color States based on Expiry */
+    div[data-testid="stPopover"].exp-red > button {
+        border: 2px solid #EF4444 !important;
+        border-bottom: 4px solid #EF4444 !important;
+        background: linear-gradient(135deg, #2D1215 0%, #1E293B 100%) !important;
+    }
+
+    div[data-testid="stPopover"].exp-amber > button {
+        border: 2px solid #F59E0B !important;
+        border-bottom: 4px solid #F59E0B !important;
+        background: linear-gradient(135deg, #2B2111 0%, #1E293B 100%) !important;
+    }
+
+    div[data-testid="stPopover"].exp-green > button {
+        border: 2px solid #10B981 !important;
+        border-bottom: 4px solid #10B981 !important;
+        background: linear-gradient(135deg, #0D261E 0%, #1E293B 100%) !important;
+    }
+
     div[data-testid="stPopover"] > button:hover {
-        border-color: #38BDF8 !important;
         transform: translateY(-2px);
     }
 
@@ -457,6 +474,22 @@ barcode_scanner = components.declare_component("barcode_scanner", path="scanner_
 # ---------------------------------------------------------
 # 6. HELPER FUNCTIONS
 # ---------------------------------------------------------
+def get_expiry_status(expiry_str):
+    """Returns color status class and dot emoji based on expiry date."""
+    if not expiry_str:
+        return "exp-green", "🟢"
+    try:
+        exp_date = datetime.strptime(expiry_str, "%Y-%m-%d").date()
+        days_left = (exp_date - datetime.today().date()).days
+        if days_left <= 1:
+            return "exp-red", "🔴"
+        elif days_left <= 3:
+            return "exp-amber", "🟠"
+        else:
+            return "exp-green", "🟢"
+    except Exception:
+        return "exp-green", "🟢"
+
 def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
     default_nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
@@ -630,7 +663,6 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
 
-            # Date Input and +30 Days Button Layout
             d_col1, d_col2 = st.columns([3, 1])
             with d_col1:
                 selected_scan_date = st.date_input(
@@ -648,7 +680,6 @@ with tab1:
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
                 if st.button("✅ Confirm & Save"):
-                    # Microsecond timestamp ensures multiple scans of the same product get unique IDs
                     unique_id = datetime.now().timestamp() + (time.time() % 1)
                     active_inv.append({
                         "id": unique_id,
@@ -755,6 +786,15 @@ with tab1:
 
 # --- TAB 2: CLEAN VISUAL FRIDGE INTERIOR ---
 with tab2:
+    # Color Legend Header
+    st.markdown("""
+    <div style="display: flex; gap: 20px; margin-bottom: 15px; font-size: 13px; justify-content: center; background: #1E293B; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
+        <span>🔴 <b>Red:</b> Due Today/Tomorrow (&le; 1 day)</span>
+        <span>🟠 <b>Amber:</b> Due in 2–3 Days</span>
+        <span>🟢 <b>Green:</b> Safe (&ge; 4 Days)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown('<div class="fridge-container">', unsafe_allow_html=True)
     
     shelves = [
@@ -776,11 +816,14 @@ with tab2:
                 col = cols[idx % 2]
                 with col:
                     portion_pct = int(item.get("portion", 1.0) * 100)
-                    item_icon = "🥛" if item.get("category") == "dairy" else "🥩" if item.get("category") == "meat" else "🥗" if item.get("category") == "produce" else "📦"
-                    label = f"{item_icon} {item['name']} ({portion_pct}%) — Exp: {item.get('expiry_date', 'N/A')}"
+                    color_class, status_emoji = get_expiry_status(item.get("expiry_date", ""))
+                    
+                    label = f"{status_emoji} {item['name']} ({portion_pct}%) — Exp: {item.get('expiry_date', 'N/A')}"
 
+                    # Container for specific CSS targeting based on status
+                    st.markdown(f'<div class="{color_class}">', unsafe_allow_html=True)
                     with st.popover(label, use_container_width=True):
-                        st.markdown(f"### **{item['name']}**")
+                        st.markdown(f"### **{status_emoji} {item['name']}**")
                         st.write(f"**Remaining Portion:** {portion_pct}%")
                         st.write(f"**Use-By Date:** {item.get('expiry_date', 'N/A')}")
                         
@@ -814,6 +857,7 @@ with tab2:
                             active_inv.remove(item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
 
