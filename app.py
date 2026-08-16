@@ -24,21 +24,21 @@ ms_css = """
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap');
 
     .stApp {
-        background-color: #F4F6F8;
+        background-color: #0F172A;
         font-family: 'Montserrat', sans-serif;
-        color: #1E1E1E;
+        color: #F8FAFC;
     }
 
     /* Header */
     .ms-header {
         background: linear-gradient(135deg, #003B25 0%, #002417 100%);
         color: #FFFFFF;
-        padding: 24px 20px;
+        padding: 20px;
         text-align: center;
         border-bottom: 3px solid #C5A059;
         margin-bottom: 25px;
-        border-radius: 0 0 12px 12px;
-        box-shadow: 0 6px 16px rgba(0, 59, 37, 0.2);
+        border-radius: 12px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     }
     .ms-brand {
         font-family: 'Playfair Display', serif;
@@ -62,33 +62,33 @@ ms_css = """
         border: 1px solid #C5A059 !important;
         border-radius: 12px !important;
         padding: 25px !important;
-        background-color: #FFFFFF !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        background-color: #1E293B !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
     /* Streamlit Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
-        border-bottom: 1px solid #E0E0E0;
+        border-bottom: 1px solid #334155;
     }
     .stTabs [data-baseweb="tab"] {
         height: 50px;
-        background-color: #FFFFFF;
+        background-color: #1E293B;
         border-radius: 8px 8px 0 0;
-        border: 1px solid #E0E0E0;
+        border: 1px solid #334155;
         border-bottom: none;
         padding: 0 24px;
         font-family: 'Montserrat', sans-serif;
         font-weight: 500;
         font-size: 13px;
         letter-spacing: 0.5px;
-        color: #555555;
+        color: #94A3B8;
     }
     .stTabs [aria-selected="true"] {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
-        border-color: #003B25 !important;
+        border-color: #C5A059 !important;
         font-weight: 600;
     }
 
@@ -96,8 +96,8 @@ ms_css = """
     .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
-        border: 1px solid #003B25 !important;
-        border-radius: 6px !important;
+        border: 1px solid #C5A059 !important;
+        border-radius: 8px !important;
         font-family: 'Montserrat', sans-serif !important;
         font-weight: 600 !important;
         font-size: 13px !important;
@@ -105,86 +105,77 @@ ms_css = """
         text-transform: uppercase !important;
         padding: 8px 16px !important;
         transition: all 0.2s ease !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         width: 100%;
     }
     .stButton > button:hover, form [data-testid="stFormSubmitButton"] > button:hover {
         background-color: #C5A059 !important;
         border-color: #C5A059 !important;
-        color: #1E1E1E !important;
-    }
-
-    input, select {
-        border-radius: 6px !important;
-        border: 1px solid #CCCCCC !important;
+        color: #0F172A !important;
     }
 
     /* ---------------------------------------------------------
-       VISUAL REALISTIC FRIDGE CONTAINER STYLING
+       REALISTIC SMART FRIDGE GRAPHIC STYLING
     --------------------------------------------------------- */
-    .fridge-outer-cabinet {
-        background: linear-gradient(180deg, #E2E8F0 0%, #CBD5E1 100%);
-        border: 12px solid #334155;
-        border-radius: 28px;
-        padding: 24px 20px 20px 20px;
-        box-shadow: inset 0 0 25px rgba(0,0,0,0.35), 0 15px 35px rgba(0,0,0,0.25);
-        margin: 15px 0;
+    .fridge-container {
+        background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+        border: 8px solid #334155;
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.05), 0 20px 40px rgba(0,0,0,0.6);
         position: relative;
     }
 
-    .fridge-interior {
-        background: linear-gradient(180deg, #FFFFFF 0%, #EDF2F7 100%);
-        border-radius: 16px;
-        padding: 20px 15px 10px 15px;
-        box-shadow: inset 0 0 15px rgba(0, 59, 37, 0.08);
-        border: 2px solid #CBD5E1;
-    }
-
-    .fridge-shelf-header {
-        background: #003B25;
-        color: #FFFFFF;
+    .shelf-header-banner {
+        background: linear-gradient(90deg, #003B25 0%, #005F3B 100%);
+        color: #E2E8F0;
+        border-left: 4px solid #C5A059;
         padding: 8px 16px;
-        border-radius: 8px 8px 0 0;
-        font-weight: 600;
+        border-radius: 6px;
+        font-weight: 700;
         font-size: 13px;
-        letter-spacing: 1.5px;
+        letter-spacing: 2px;
         text-transform: uppercase;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-top: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
 
-    .fridge-shelf-rack {
-        background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(241,245,249,0.9) 100%);
-        border-bottom: 6px solid #94A3B8;
-        border-left: 2px solid #CBD5E1;
-        border-right: 2px solid #CBD5E1;
-        border-radius: 0 0 8px 8px;
-        padding: 16px 12px 12px 12px;
+    /* Glass Shelf Line styling */
+    .glass-shelf-line {
+        height: 8px;
+        background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.8), rgba(255,255,255,0.1));
+        border-bottom: 3px solid #38BDF8;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+        margin-top: 10px;
         margin-bottom: 25px;
-        box-shadow: 0 6px 12px -2px rgba(0,0,0,0.15);
-        position: relative;
     }
 
-    /* Metallic shelf bar effect */
-    .fridge-shelf-rack::after {
-        content: "";
-        position: absolute;
-        bottom: -6px;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, #CBD5E1, #FFFFFF, #94A3B8);
+    /* Style Streamlit Popover buttons to look like physical fridge items */
+    div[data-testid="stPopover"] > button {
+        background: linear-gradient(135deg, #1E293B 0%, #334155 100%) !important;
+        border: 1px solid #475569 !important;
+        border-bottom: 3px solid #C5A059 !important;
+        border-radius: 10px !important;
+        color: #F8FAFC !important;
+        font-weight: 600 !important;
+        padding: 12px !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
+        text-align: left !important;
     }
 
-    .empty-shelf-text {
-        text-align: center;
-        color: #94A3B8;
-        font-size: 12px;
+    div[data-testid="stPopover"] > button:hover {
+        border-color: #38BDF8 !important;
+        transform: translateY(-2px);
+    }
+
+    .empty-shelf-msg {
+        color: #64748B;
+        font-size: 13px;
         font-style: italic;
-        padding: 15px 0;
-        margin: 0;
+        text-align: center;
+        padding: 10px 0;
     }
 </style>
 """
@@ -239,7 +230,7 @@ if not st.session_state.get("authentication_status"):
 
         with auth_tab2:
             with st.form("signup_form"):
-                st.markdown("<h3 style='text-align: center; color: #003B25;'>Create Your Account</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center; color: #C5A059;'>Create Your Account</h3>", unsafe_allow_html=True)
                 new_username = st.text_input("Username / Email")
                 new_name = st.text_input("Full Name")
                 new_pw = st.text_input("Password", type="password")
@@ -314,12 +305,12 @@ HTML_SCANNER_CODE = """
     #reader { width: 100%; height: 300px; border-radius: 12px; overflow: hidden; background: #000; display: flex !important; align-items: center !important; justify-content: center !important; position: relative !important; border: 2px solid #C5A059; }
     #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; }
     #reader__scan_region { position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; margin: 0 !important; }
-    #status { text-align: center; font-weight: 600; color: #003B25; margin-top: 10px; font-size: 13px; letter-spacing: 0.5px; min-height: 22px; }
+    #status { text-align: center; font-weight: 600; color: #C5A059; margin-top: 10px; font-size: 13px; letter-spacing: 0.5px; min-height: 22px; }
   </style>
 </head>
 <body>
   <div id="reader"></div>
-  <div id="status">📷 Initializing rear scanner...</div>
+  <div id="status">📷 Initializing scanner...</div>
 
   <script>
     function sendMessage(type, data) {
@@ -516,7 +507,7 @@ def generate_smart_recipes(inventory):
 # ---------------------------------------------------------
 # 7. MAIN INTERFACE
 # ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Fridge", "🍴 Gourmet Meal Planner"])
+tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Fridge Interior", "🍴 Gourmet Meal Planner"])
 
 # --- TAB 1: SCANNING & RECEIPT ---
 with tab1:
@@ -607,14 +598,10 @@ with tab1:
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-# --- TAB 2: INTERACTIVE VISUAL FRIDGE WITH REALISTIC SHELVES ---
+# --- TAB 2: CLEAN VISUAL FRIDGE INTERIOR ---
 with tab2:
-    st.subheader("🧊 Your Fridge")
-    st.caption("Click any item to view details or log consumption.")
-
-    # Outer metallic cabinet wrapper
-    st.markdown('<div class="fridge-outer-cabinet"><div class="fridge-interior">', unsafe_allow_html=True)
-
+    st.markdown('<div class="fridge-container">', unsafe_allow_html=True)
+    
     shelves = [
         ("🥛 TOP SHELF — Dairy & Prepared Items", ["dairy", "ready_meal"]),
         ("🥩 MIDDLE SHELF — Meat & Poultry", ["meat"]),
@@ -622,20 +609,18 @@ with tab2:
     ]
 
     for title, cats in shelves:
-        # Render the shelf title bar
-        st.markdown(f'<div class="fridge-shelf-header"><span>{title}</span></div>', unsafe_allow_html=True)
-        
-        # Render the wire rack area containing the items
-        st.markdown('<div class="fridge-shelf-rack">', unsafe_allow_html=True)
+        # Render LED Shelf Header
+        st.markdown(f'<div class="shelf-header-banner">{title}</div>', unsafe_allow_html=True)
         
         shelf_items = [item for item in active_inv if item.get("category") in cats]
 
         if not shelf_items:
-            st.markdown('<p class="empty-shelf-text">Shelf is currently empty</p>', unsafe_allow_html=True)
+            st.markdown('<div class="empty-shelf-msg">Shelf is currently empty</div>', unsafe_allow_html=True)
         else:
-            cols = st.columns(3)
+            # Grid layout for items sitting on the shelf
+            cols = st.columns(2)
             for idx, item in enumerate(shelf_items):
-                col = cols[idx % 3]
+                col = cols[idx % 2]
                 with col:
                     portion_pct = int(item.get("portion", 1.0) * 100)
                     item_icon = "🥛" if item.get("category") == "dairy" else "🥩" if item.get("category") == "meat" else "🥗" if item.get("category") == "produce" else "📦"
@@ -674,9 +659,10 @@ with tab2:
                             active_inv.remove(item)
                             st.rerun()
 
-        st.markdown('</div>', unsafe_allow_html=True) # Close shelf-rack
+        # Render Metallic Glass Shelf bar directly beneath items
+        st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
 
-    st.markdown('</div></div>', unsafe_allow_html=True) # Close interior & outer cabinet
+    st.markdown('</div>', unsafe_allow_html=True) # Close fridge-container
 
     if active_inv:
         st.divider()
