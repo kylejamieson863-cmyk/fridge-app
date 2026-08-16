@@ -5,7 +5,8 @@ import requests
 import pandas as pd
 import re
 import io
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from PIL import Image, ImageEnhance
 from supabase import create_client
 
@@ -358,14 +359,17 @@ if "loaded_user" not in st.session_state or st.session_state.loaded_user != curr
 
 active_inv = st.session_state.active_inv
 
-if "last_processed_code" not in st.session_state:
-    st.session_state.last_processed_code = None
-
 if "pending_scanned_item" not in st.session_state:
     st.session_state.pending_scanned_item = None
 
 if "staged_receipt_items" not in st.session_state:
     st.session_state.staged_receipt_items = []
+
+if "scan_target_date" not in st.session_state:
+    st.session_state.scan_target_date = datetime.today().date()
+
+if "manual_target_date" not in st.session_state:
+    st.session_state.manual_target_date = datetime.today().date()
 
 # Top User Info Bar
 top_col1, top_col2 = st.columns([4, 1])
@@ -478,7 +482,7 @@ def lookup_barcode(barcode_str):
                 cat = "ready_meal"
                 if any("meat" in c or "poultry" in c for c in categories):
                     cat = "meat"
-                elif any("dairy" in c or "cheese" in c or "milk" in c for c in categories):
+                elif any("dairy" in c or "cheese" in c or "milk" in c or "yogurt" in c for c in categories):
                     cat = "dairy"
                 elif any("vegetable" in c or "fruit" in c or "produce" in c or "grape" in c for c in categories):
                     cat = "produce"
@@ -605,14 +609,14 @@ with tab1:
         scanned_code = barcode_scanner(key="live_barcode_reader")
         
         # Intercept scanned code to trigger custom date modal
-        if scanned_code and scanned_code != st.session_state.last_processed_code:
-            st.session_state.last_processed_code = scanned_code
+        if scanned_code:
             item_name, category, nutrition = lookup_barcode(scanned_code)
             st.session_state.pending_scanned_item = {
                 "name": item_name,
                 "category": category,
                 "nutrition": nutrition
             }
+            st.session_state.scan_target_date = datetime.today().date()
             st.rerun()
 
         # SUPERMARKET CUSTOM DATE SELECTION MODAL
@@ -626,39 +630,64 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
 
-            # Custom Date Picker Input
-            final_date_input = st.date_input(
-                "📅 Select Use-By / Best Before Date:",
-                value=datetime.today().date(),
-                key="supermarket_custom_date"
-            )
+            # Date Input and +30 Days Button Layout
+            d_col1, d_col2 = st.columns([3, 1])
+            with d_col1:
+                selected_scan_date = st.date_input(
+                    "📅 Select Use-By / Best Before Date:",
+                    value=st.session_state.scan_target_date,
+                    key="scan_date_picker"
+                )
+                st.session_state.scan_target_date = selected_scan_date
+            with d_col2:
+                st.write("&nbsp;")
+                if st.button("➕ 30 Days", key="add_30_scan"):
+                    st.session_state.scan_target_date += timedelta(days=30)
+                    st.rerun()
 
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
                 if st.button("✅ Confirm & Save"):
+                    # Microsecond timestamp ensures multiple scans of the same product get unique IDs
+                    unique_id = datetime.now().timestamp() + (time.time() % 1)
                     active_inv.append({
-                        "id": datetime.now().timestamp(),
+                        "id": unique_id,
                         "name": item["name"],
                         "category": item["category"],
                         "portion": 1.0,
                         "nutrition": item["nutrition"],
-                        "expiry_date": final_date_input.strftime("%Y-%m-%d")
+                        "expiry_date": st.session_state.scan_target_date.strftime("%Y-%m-%d")
                     })
                     save_user_inventory(current_user_id, active_inv)
                     st.session_state.pending_scanned_item = None
+                    st.session_state.scan_target_date = datetime.today().date()
                     st.toast(f"✨ Added to Fridge: **{item['name']}**", icon="🛒")
                     st.rerun()
 
             with c_btn2:
                 if st.button("❌ Cancel"):
                     st.session_state.pending_scanned_item = None
+                    st.session_state.scan_target_date = datetime.today().date()
                     st.rerun()
 
         st.divider()
         st.caption("Quick Manual Lookup:")
         manual_name = st.text_input("Product Name or Barcode Digits:", key="manual_barcode")
         manual_cat = st.selectbox("Category:", ["meat", "dairy", "produce", "ready_meal"])
-        manual_date = st.date_input("Use-By Date:", datetime.today(), key="manual_exp_date")
+        
+        m_col1, m_col2 = st.columns([3, 1])
+        with m_col1:
+            selected_manual_date = st.date_input(
+                "Use-By Date:", 
+                value=st.session_state.manual_target_date, 
+                key="manual_date_picker"
+            )
+            st.session_state.manual_target_date = selected_manual_date
+        with m_col2:
+            st.write("&nbsp;")
+            if st.button("➕ 30 Days", key="add_30_manual"):
+                st.session_state.manual_target_date += timedelta(days=30)
+                st.rerun()
         
         if st.button("Add Item to Fridge"):
             if manual_name:
@@ -667,17 +696,20 @@ with tab1:
                 else:
                     name, cat = manual_name, manual_cat
                     nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
-                    
+                
+                unique_id = datetime.now().timestamp() + (time.time() % 1)
                 active_inv.append({
-                    "id": datetime.now().timestamp(),
+                    "id": unique_id,
                     "name": name,
                     "category": cat,
                     "portion": 1.0,
                     "nutrition": nutrition,
-                    "expiry_date": manual_date.strftime("%Y-%m-%d")
+                    "expiry_date": st.session_state.manual_target_date.strftime("%Y-%m-%d")
                 })
                 save_user_inventory(current_user_id, active_inv)
+                st.session_state.manual_target_date = datetime.today().date()
                 st.success(f"Added: **{name}**")
+                st.rerun()
 
     with col2:
         st.subheader("2. Receipt OCR Photo Scanner")
@@ -703,8 +735,9 @@ with tab1:
                 if st.button("✅ Confirm & Save Receipts"):
                     confirmed_items = edited_df.to_dict("records")
                     for item in confirmed_items:
+                        unique_id = datetime.now().timestamp() + (time.time() % 1)
                         active_inv.append({
-                            "id": datetime.now().timestamp(),
+                            "id": unique_id,
                             "name": str(item["name"]),
                             "category": str(item["category"]),
                             "portion": 1.0,
@@ -744,7 +777,7 @@ with tab2:
                 with col:
                     portion_pct = int(item.get("portion", 1.0) * 100)
                     item_icon = "🥛" if item.get("category") == "dairy" else "🥩" if item.get("category") == "meat" else "🥗" if item.get("category") == "produce" else "📦"
-                    label = f"{item_icon} {item['name']} ({portion_pct}%)"
+                    label = f"{item_icon} {item['name']} ({portion_pct}%) — Exp: {item.get('expiry_date', 'N/A')}"
 
                     with st.popover(label, use_container_width=True):
                         st.markdown(f"### **{item['name']}**")
