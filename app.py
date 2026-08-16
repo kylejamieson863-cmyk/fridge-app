@@ -43,7 +43,7 @@ ms_css = """
         padding: 20px;
         text-align: center;
         border-bottom: 3px solid #C5A059;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
         border-radius: 12px;
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     }
@@ -99,7 +99,7 @@ ms_css = """
         font-weight: 600;
     }
 
-    /* Large Supermarket Touch Buttons */
+    /* Touch Buttons */
     .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
@@ -107,14 +107,14 @@ ms_css = """
         border-radius: 10px !important;
         font-family: 'Montserrat', sans-serif !important;
         font-weight: 700 !important;
-        font-size: 14px !important;
-        letter-spacing: 1px !important;
+        font-size: 13px !important;
+        letter-spacing: 0.5px !important;
         text-transform: uppercase !important;
-        padding: 12px 18px !important;
+        padding: 10px 14px !important;
         transition: all 0.2s ease !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         width: 100%;
-        min-height: 48px !important;
+        min-height: 44px !important;
     }
     .stButton > button:hover, form [data-testid="stFormSubmitButton"] > button:hover {
         background-color: #C5A059 !important;
@@ -138,9 +138,9 @@ ms_css = """
     --------------------------------------------------------- */
     .fridge-container {
         background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
-        border: 8px solid #334155;
-        border-radius: 20px;
-        padding: 20px;
+        border: 6px solid #334155;
+        border-radius: 16px;
+        padding: 15px;
         box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.05), 0 20px 40px rgba(0,0,0,0.6);
         position: relative;
     }
@@ -149,36 +149,40 @@ ms_css = """
         background: linear-gradient(90deg, #003B25 0%, #005F3B 100%);
         color: #E2E8F0;
         border-left: 4px solid #C5A059;
-        padding: 8px 16px;
+        padding: 8px 14px;
         border-radius: 6px;
         font-weight: 700;
-        font-size: 13px;
-        letter-spacing: 2px;
+        font-size: 12px;
+        letter-spacing: 1.5px;
         text-transform: uppercase;
-        margin-top: 15px;
-        margin-bottom: 15px;
+        margin-top: 10px;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
 
     .glass-shelf-line {
-        height: 8px;
+        height: 6px;
         background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.8), rgba(255,255,255,0.1));
-        border-bottom: 3px solid #38BDF8;
+        border-bottom: 2px solid #38BDF8;
         border-radius: 4px;
         box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
-        margin-top: 10px;
-        margin-bottom: 25px;
+        margin-top: 12px;
+        margin-bottom: 20px;
     }
 
-    /* DYNAMIC EXPIRY COLOR CODED POPOVERS */
+    /* EXPIRY COLOR CODED POPOVERS */
     div[data-testid="stPopover"] > button {
         background: linear-gradient(135deg, #1E293B 0%, #334155 100%) !important;
         border-radius: 10px !important;
         color: #F8FAFC !important;
         font-weight: 600 !important;
-        padding: 12px !important;
+        padding: 10px 12px !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
         text-align: left !important;
+        margin-bottom: 6px !important;
     }
 
     /* Color States based on Expiry */
@@ -206,10 +210,20 @@ ms_css = """
 
     .empty-shelf-msg {
         color: #64748B;
-        font-size: 13px;
+        font-size: 12px;
         font-style: italic;
         text-align: center;
-        padding: 10px 0;
+        padding: 8px 0;
+    }
+    
+    .qty-badge {
+        background-color: #C5A059;
+        color: #0F172A;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 10px;
+        font-size: 11px;
+        margin-left: 6px;
     }
 </style>
 """
@@ -472,8 +486,32 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 6. HELPER FUNCTIONS
+# 6. ENHANCED HELPER FUNCTIONS & CATEGORY MATCHING
 # ---------------------------------------------------------
+def categorize_item(name_str, category_tags=[]):
+    """Accurately maps item names to proper fridge shelves."""
+    text = (name_str + " " + " ".join(category_tags)).lower()
+    
+    # 1. Fresh Produce (Crisper Drawer)
+    produce_keywords = ["potato", "potatoes", "onion", "onions", "grape", "grapes", "apple", "banana", "berry", 
+                        "fruit", "veg", "vegetable", "salad", "produce", "pickle", "pickled", "lemon", "lime"]
+    if any(w in text for w in produce_keywords):
+        return "produce"
+        
+    # 2. Meat & Poultry (Middle Shelf)
+    meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", 
+                     "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry"]
+    if any(w in text for w in meat_keywords):
+        return "meat"
+        
+    # 3. Dairy & Spreads (Top Shelf)
+    dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable"]
+    if any(w in text for w in dairy_keywords):
+        return "dairy"
+        
+    # 4. Ready Meals & Drinks (Top Shelf)
+    return "ready_meal"
+
 def get_expiry_status(expiry_str):
     """Returns color status class and dot emoji based on expiry date."""
     if not expiry_str:
@@ -512,19 +550,12 @@ def lookup_barcode(barcode_str):
                     "fat": f"{nutriments.get('fat_100g', 'N/A')} g"
                 }
                 
-                cat = "ready_meal"
-                if any("meat" in c or "poultry" in c for c in categories):
-                    cat = "meat"
-                elif any("dairy" in c or "cheese" in c or "milk" in c or "yogurt" in c for c in categories):
-                    cat = "dairy"
-                elif any("vegetable" in c or "fruit" in c or "produce" in c or "grape" in c for c in categories):
-                    cat = "produce"
-                    
+                cat = categorize_item(name, categories)
                 return name, cat, nutrition
         except Exception:
             pass
             
-    return f"Scanned Item ({barcode_str})", ("produce" if "0857" in str(barcode_str) else "ready_meal"), default_nutrition
+    return f"Scanned Item ({barcode_str})", categorize_item(str(barcode_str)), default_nutrition
 
 def process_receipt_image(image_bytes):
     try:
@@ -582,15 +613,7 @@ def process_receipt_image(image_bytes):
             if len(letters_only) < 3:
                 continue
                 
-            cat = "ready_meal"
-            item_lower = cleaned_item.lower()
-            if any(w in item_lower for w in ["chk", "chicken", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", "mince", "salmon", "fish"]):
-                cat = "meat"
-            elif any(w in item_lower for w in ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip"]):
-                cat = "dairy"
-            elif any(w in item_lower for w in ["apple", "banana", "grape", "berry", "veg", "potato", "onion", "salad", "org", "fruit", "lemon"]):
-                cat = "produce"
-                
+            cat = categorize_item(cleaned_item)
             extracted_items.append({"name": cleaned_item.title(), "category": cat})
             
         return extracted_items
@@ -641,7 +664,6 @@ with tab1:
         
         scanned_code = barcode_scanner(key="live_barcode_reader")
         
-        # Intercept scanned code to trigger custom date modal
         if scanned_code:
             item_name, category, nutrition = lookup_barcode(scanned_code)
             st.session_state.pending_scanned_item = {
@@ -652,7 +674,6 @@ with tab1:
             st.session_state.scan_target_date = datetime.today().date()
             st.rerun()
 
-        # SUPERMARKET CUSTOM DATE SELECTION MODAL
         if st.session_state.pending_scanned_item:
             item = st.session_state.pending_scanned_item
 
@@ -725,7 +746,8 @@ with tab1:
                 if manual_name.isdigit():
                     name, cat, nutrition = lookup_barcode(manual_name)
                 else:
-                    name, cat = manual_name, manual_cat
+                    name = manual_name
+                    cat = categorize_item(manual_name) if manual_cat == "ready_meal" else manual_cat
                     nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
                 
                 unique_id = datetime.now().timestamp() + (time.time() % 1)
@@ -784,79 +806,88 @@ with tab1:
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-# --- TAB 2: CLEAN VISUAL FRIDGE INTERIOR ---
+# --- TAB 2: CLEAN STACKED VISUAL FRIDGE INTERIOR ---
 with tab2:
-    # Color Legend Header
     st.markdown("""
-    <div style="display: flex; gap: 20px; margin-bottom: 15px; font-size: 13px; justify-content: center; background: #1E293B; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
-        <span>🔴 <b>Red:</b> Due Today/Tomorrow (&le; 1 day)</span>
-        <span>🟠 <b>Amber:</b> Due in 2–3 Days</span>
-        <span>🟢 <b>Green:</b> Safe (&ge; 4 Days)</span>
+    <div style="display: flex; gap: 15px; margin-bottom: 12px; font-size: 12px; justify-content: center; background: #1E293B; padding: 8px; border-radius: 8px; border: 1px solid #334155;">
+        <span>🔴 Today/Tomorrow (&le; 1 day)</span>
+        <span>🟠 2–3 Days</span>
+        <span>🟢 Safe (&ge; 4 Days)</span>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="fridge-container">', unsafe_allow_html=True)
     
     shelves = [
-        ("🥛 TOP SHELF — Dairy & Prepared Items", ["dairy", "ready_meal"]),
+        ("🥛 TOP SHELF — Dairy, Drinks & Prepared Items", ["dairy", "ready_meal"]),
         ("🥩 MIDDLE SHELF — Meat & Poultry", ["meat"]),
         ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
     ]
 
     for title, cats in shelves:
-        st.markdown(f'<div class="shelf-header-banner">{title}</div>', unsafe_allow_html=True)
+        # Fetch all matching items for this shelf
+        shelf_raw_items = [item for item in active_inv if item.get("category") in cats or (cats[0] == "ready_meal" and item.get("category") not in ["meat", "produce"])]
         
-        shelf_items = [item for item in active_inv if item.get("category") in cats]
+        total_items_count = len(shelf_raw_items)
+        st.markdown(f'<div class="shelf-header-banner"><span>{title}</span><span>{total_items_count} ITEMS</span></div>', unsafe_allow_html=True)
 
-        if not shelf_items:
-            st.markdown('<div class="empty-shelf-msg">Shelf is currently empty</div>', unsafe_allow_html=True)
+        if not shelf_raw_items:
+            st.markdown('<div class="empty-shelf-msg">Shelf is empty</div>', unsafe_allow_html=True)
         else:
+            # Group identical items together by (name + expiry)
+            grouped_dict = {}
+            for item in shelf_raw_items:
+                group_key = (item["name"].strip().title(), item.get("expiry_date", "N/A"))
+                if group_key not in grouped_dict:
+                    grouped_dict[group_key] = []
+                grouped_dict[group_key].append(item)
+
+            # Display grouped items in clean grid columns
+            grouped_keys = list(grouped_dict.keys())
             cols = st.columns(2)
-            for idx, item in enumerate(shelf_items):
+            
+            for idx, key in enumerate(grouped_keys):
+                item_group = grouped_dict[key]
+                first_item = item_group[0]
+                qty = len(item_group)
+                
+                name, exp_date = key
+                color_class, status_emoji = get_expiry_status(exp_date)
+                
+                qty_badge_html = f'<span class="qty-badge">x{qty}</span>' if qty > 1 else ''
+                label = f"{status_emoji} {name} (x{qty}) — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name} — Exp: {exp_date}"
+
                 col = cols[idx % 2]
                 with col:
-                    portion_pct = int(item.get("portion", 1.0) * 100)
-                    color_class, status_emoji = get_expiry_status(item.get("expiry_date", ""))
-                    
-                    label = f"{status_emoji} {item['name']} ({portion_pct}%) — Exp: {item.get('expiry_date', 'N/A')}"
-
-                    # Container for specific CSS targeting based on status
                     st.markdown(f'<div class="{color_class}">', unsafe_allow_html=True)
                     with st.popover(label, use_container_width=True):
-                        st.markdown(f"### **{status_emoji} {item['name']}**")
-                        st.write(f"**Remaining Portion:** {portion_pct}%")
-                        st.write(f"**Use-By Date:** {item.get('expiry_date', 'N/A')}")
+                        st.markdown(f"### **{status_emoji} {name}**")
+                        st.write(f"**Total Quantity in Stack:** {qty}")
+                        st.write(f"**Use-By Date:** {exp_date}")
                         
                         st.markdown("---")
                         st.markdown("**📊 Nutrition Info (per 100g):**")
-                        nut = item.get("nutrition", {})
+                        nut = first_item.get("nutrition", {})
                         st.write(f"• **Calories:** {nut.get('calories', 'N/A')}")
                         st.write(f"• **Protein:** {nut.get('protein', 'N/A')}")
                         st.write(f"• **Carbs:** {nut.get('carbs', 'N/A')}")
                         st.write(f"• **Fat:** {nut.get('fat', 'N/A')}")
                         
                         st.markdown("---")
-                        st.markdown("**🍽️ Log Usage:**")
-                        p_col1, p_col2, p_col3 = st.columns(3)
+                        st.markdown("**🍽️ Log Usage / Consume:**")
                         
-                        if p_col1.button("Used 1/4", key=f"quarter_{item['id']}"):
-                            item["portion"] -= 0.25
-                            if item["portion"] <= 0:
-                                active_inv.remove(item)
+                        btn_col1, btn_col2 = st.columns(2)
+                        if btn_col1.button(f"Consume 1 Unit", key=f"use_one_{first_item['id']}"):
+                            active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
                             
-                        if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
-                            item["portion"] -= 0.50
-                            if item["portion"] <= 0:
-                                active_inv.remove(item)
+                        if btn_col2.button(f"Clear All ({qty})", key=f"clear_all_{first_item['id']}"):
+                            for itm in item_group:
+                                active_inv.remove(itm)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
                             
-                        if p_col3.button("Finished", key=f"finish_{item['id']}"):
-                            active_inv.remove(item)
-                            save_user_inventory(current_user_id, active_inv)
-                            st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
