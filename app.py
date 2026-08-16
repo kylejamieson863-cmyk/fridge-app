@@ -30,13 +30,11 @@ ms_css = """
         color: #F8FAFC;
     }
 
-    /* Target ONLY Date Inputs to prevent mobile keyboard popup */
     div[data-testid="stDateInput"] input {
         inputmode: none !important;
         cursor: pointer !important;
     }
 
-    /* Header */
     .ms-header {
         background: linear-gradient(135deg, #003B25 0%, #002417 100%);
         color: #FFFFFF;
@@ -64,7 +62,6 @@ ms_css = """
         font-weight: 500;
     }
 
-    /* Auth Forms & Cards */
     div[data-testid="stForm"] {
         border: 1px solid #C5A059 !important;
         border-radius: 12px !important;
@@ -73,7 +70,6 @@ ms_css = """
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
-    /* Streamlit Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
@@ -99,7 +95,6 @@ ms_css = """
         font-weight: 600;
     }
 
-    /* Touch Buttons */
     .stButton > button, form [data-testid="stFormSubmitButton"] > button {
         background-color: #003B25 !important;
         color: #FFFFFF !important;
@@ -122,7 +117,6 @@ ms_css = """
         color: #0F172A !important;
     }
 
-    /* Pending Scan Supermarket Card */
     .scan-card {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
         border: 2px solid #C5A059;
@@ -133,9 +127,6 @@ ms_css = """
         box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
 
-    /* ---------------------------------------------------------
-       REALISTIC SMART FRIDGE GRAPHIC STYLING
-    --------------------------------------------------------- */
     .fridge-container {
         background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
         border: 6px solid #334155;
@@ -173,7 +164,6 @@ ms_css = """
         margin-bottom: 20px;
     }
 
-    /* EXPIRY COLOR CODED POPOVERS */
     div[data-testid="stPopover"] > button {
         background: linear-gradient(135deg, #1E293B 0%, #334155 100%) !important;
         border-radius: 10px !important;
@@ -185,7 +175,6 @@ ms_css = """
         margin-bottom: 6px !important;
     }
 
-    /* Color States based on Expiry */
     div[data-testid="stPopover"].exp-red > button {
         border: 2px solid #EF4444 !important;
         border-bottom: 4px solid #EF4444 !important;
@@ -225,11 +214,37 @@ ms_css = """
         font-size: 11px;
         margin-left: 6px;
     }
+
+    /* Recipe Card Styling */
+    .recipe-card {
+        background: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .recipe-card-ready {
+        border-left: 5px solid #10B981;
+    }
+    .recipe-card-missing {
+        border-left: 5px solid #F59E0B;
+    }
+    .missing-tag {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #F59E0B;
+        border: 1px solid #F59E0B;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-block;
+        margin-top: 6px;
+    }
 </style>
 """
 st.markdown(ms_css, unsafe_allow_html=True)
 
-# Precision JavaScript: Only apply readonly to stDateInput elements
 st.components.v1.html(
     """
     <script>
@@ -247,7 +262,7 @@ st.components.v1.html(
 )
 
 # ---------------------------------------------------------
-# 2. BRANDED HEADER & SUPABASE CLOUD CONNECTION
+# 2. HEADER & SUPABASE CONNECTION
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
@@ -315,7 +330,7 @@ def save_user_inventory(user_id, inventory):
         st.error(f"Error saving inventory: {e}")
 
 # ---------------------------------------------------------
-# 3. PROFESSIONAL SUPABASE AUTHENTICATION
+# 3. AUTHENTICATION
 # ---------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -411,7 +426,7 @@ with top_col2:
         logout_user()
 
 # ---------------------------------------------------------
-# 5. NATIVE BARCODE SCANNER COMPONENT
+# 5. BARCODE SCANNER COMPONENT
 # ---------------------------------------------------------
 os.makedirs("scanner_component", exist_ok=True)
 
@@ -489,31 +504,25 @@ barcode_scanner = components.declare_component("barcode_scanner", path="scanner_
 # 6. ENHANCED HELPER FUNCTIONS & CATEGORY MATCHING
 # ---------------------------------------------------------
 def categorize_item(name_str, category_tags=[]):
-    """Accurately maps item names to proper fridge shelves."""
     text = (name_str + " " + " ".join(category_tags)).lower()
     
-    # 1. Fresh Produce (Crisper Drawer)
     produce_keywords = ["potato", "potatoes", "onion", "onions", "grape", "grapes", "apple", "banana", "berry", 
                         "fruit", "veg", "vegetable", "salad", "produce", "pickle", "pickled", "lemon", "lime"]
     if any(w in text for w in produce_keywords):
         return "produce"
         
-    # 2. Meat & Poultry (Middle Shelf)
     meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", 
                      "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry"]
     if any(w in text for w in meat_keywords):
         return "meat"
         
-    # 3. Dairy & Spreads (Top Shelf)
     dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable"]
     if any(w in text for w in dairy_keywords):
         return "dairy"
         
-    # 4. Ready Meals & Drinks (Top Shelf)
     return "ready_meal"
 
 def get_expiry_status(expiry_str):
-    """Returns color status class and dot emoji based on expiry date."""
     if not expiry_str:
         return "exp-green", "🟢"
     try:
@@ -621,33 +630,145 @@ def process_receipt_image(image_bytes):
         st.error(f"Receipt Exception: {str(e)}")
         return []
 
-def generate_smart_recipes(inventory):
+# ---------------------------------------------------------
+# NEW CULINARY MEAL PLANNER ENGINE
+# ---------------------------------------------------------
+def analyze_fridge_for_meals(inventory):
+    """Categorizes items and matches them against recipes & missing ingredient ideas."""
     if not inventory:
-        return "Your fridge is empty! Add items to generate recipe inspirations."
-    
-    sorted_items = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
-    expiring_soon = [i["name"] for i in sorted_items[:3]]
-    
-    meats = [i["name"] for i in inventory if i.get("category") == "meat"]
-    produce = [i["name"] for i in inventory if i.get("category") == "produce"]
-    dairy = [i["name"] for i in inventory if i.get("category") == "dairy"]
-    
-    recipes = []
-    if meats and produce:
-        recipes.append(f"**1. Pan-Seared {meats[0]} with Fresh {produce[0]}**\n* Prioritizing: {meats[0]}, {produce[0]}\n* *Chef's Note:* Sear {meats[0]} over medium-high heat; toss {produce[0]} in olive oil and roast gently.")
-    if meats:
-        recipes.append(f"**2. Premium {meats[0]} Gourmet Skillet**\n* Prioritizing: {meats[0]}\n* *Chef's Note:* Pair {meats[0]} with roasted potatoes and a splash of red wine reduction.")
-    if produce or dairy:
-        prod_str = produce[0] if produce else "seasoned greens"
-        dairy_str = dairy[0] if dairy else "artisan cheese"
-        recipes.append(f"**3. Fresh {prod_str.title()} & {dairy_str.title()} Salad Bowl**\n* Prioritizing: {prod_str}, {dairy_str}\n* *Chef's Note:* Dress {prod_str} with extra virgin olive oil and crumble {dairy_str} over top.")
+        return [], []
 
-    if not recipes:
-        recipes.append(f"**1. Quick Chef's Special**\n* Prioritizing: {', '.join(expiring_soon)}\n* *Chef's Note:* Gently sauté earliest expiring ingredients together with herbs.")
+    # Sort items by expiration so earliest items are prioritized
+    sorted_inv = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
+    
+    # Names normalized
+    item_names = [i["name"].strip().title() for i in sorted_inv]
+    item_names_lower = [i.lower() for i in item_names]
+    
+    # Helper to check if ingredient is present
+    def is_in_fridge(keyword):
+        return any(keyword in name for name in item_names_lower)
 
-    out = "### 🍴 Inspired Recipes (Prioritizing Earliest Expirations):\n\n"
-    out += "\n\n---\n\n".join(recipes)
-    return out
+    # Helper to get exact item display name
+    def get_fridge_name(keyword):
+        for name in item_names:
+            if keyword in name.lower():
+                return name
+        return keyword.title()
+
+    ready_meals = []
+    missing_meals = []
+
+    # Check for direct ready meals / pre-made dishes first
+    for item in sorted_inv:
+        cat = item.get("category")
+        name = item.get("name")
+        if cat == "ready_meal" or any(w in name.lower() for w in ["bolognese", "kebab", "burger", "curry", "pasta", "pizza"]):
+            ready_meals.append({
+                "title": f"Ready-to-Heat: {name}",
+                "in_stock": [name],
+                "missing": [],
+                "instructions": "Pre-prepared meal. Reheat thoroughly according to package instructions until piping hot."
+            })
+
+    # Recipe Database with intelligent ingredient matching
+    RECIPE_DATABASE = [
+        {
+            "title": "Gourmet Lamb Kebabs with Minted Salad & Dip",
+            "required": ["kebab", "lamb"],
+            "optional": [
+                {"keys": ["dip", "sauce", "yogurt"], "name": "Fresh Dip/Yogurt"},
+                {"keys": ["salad", "grape", "fruit", "lemon"], "name": "Side Salad/Garnish"},
+                {"keys": ["pita", "bread", "wrap"], "name": "Flatbread or Pita"}
+            ],
+            "instructions": "Grill or pan-fry the lamb kebabs until charred and cooked through. Serve alongside fresh dip and a crisp side salad."
+        },
+        {
+            "title": "Classic Spaghetti Bolognese Feast",
+            "required": ["bolognese", "spaghetti"],
+            "optional": [
+                {"keys": ["cheese", "cheddar", "parmesan"], "name": "Grated Cheese"},
+                {"keys": ["bread", "garlic"], "name": "Garlic Bread"}
+            ],
+            "instructions": "Heat the bolognese sauce gently. Toss with freshly cooked pasta and top generously with grated cheese."
+        },
+        {
+            "title": "Loaded Gourmet Smash Burgers",
+            "required": ["burger", "burgers"],
+            "optional": [
+                {"keys": ["cheese", "cheddar"], "name": "Burger Cheese Slices"},
+                {"keys": ["bun", "bread", "roll"], "name": "Brioche Buns"},
+                {"keys": ["pickle", "onion", "salad"], "name": "Pickles or Sliced Onion"}
+            ],
+            "instructions": "Sear smash patties on a high-heat griddle for crispy edges. Melt cheese on top and serve in toasted buns with pickles."
+        },
+        {
+            "title": "Pan-Seared Protein & Potato Skillet",
+            "required": ["potato", "potatoes"],
+            "optional": [
+                {"keys": ["chicken", "steak", "pork", "sausage", "bacon", "lamb"], "name": "Protein Choice (Chicken/Steak/Sausages)"},
+                {"keys": ["butter", "oil"], "name": "Butter or Herbs"},
+                {"keys": ["onion", "veg"], "name": "Sautéed Veggies"}
+            ],
+            "instructions": "Parboil potatoes, then crisp them in a pan with butter. Pair with seared protein and sautéed vegetables."
+        },
+        {
+            "title": "High-Protein Greek Yogurt Parfait",
+            "required": ["yogurt"],
+            "optional": [
+                {"keys": ["grape", "grapes", "berry", "fruit", "apple"], "name": "Fresh Fruit/Grapes"},
+                {"keys": ["honey", "oats", "granola"], "name": "Honey or Granola"}
+            ],
+            "instructions": "Layer thick Greek yogurt in a bowl with fresh fruit and top with a drizzle of honey or crisp granola."
+        },
+        {
+            "title": "Rich Chocolate Cookie Dough Dessert Bowl",
+            "required": ["cookie dough", "dough", "chocolate"],
+            "optional": [
+                {"keys": ["cream", "ice cream", "milk"], "name": "Fresh Cream or Ice Cream"},
+                {"keys": ["berry", "fruit"], "name": "Fresh Berries"}
+            ],
+            "instructions": "Bake or warm the cookie dough until gooey in the center. Serve warm with cream or fresh berries."
+        }
+    ]
+
+    for recipe in RECIPE_DATABASE:
+        # Check required primary ingredients
+        has_req = False
+        matched_req_name = ""
+        for req in recipe["required"]:
+            if is_in_fridge(req):
+                has_req = True
+                matched_req_name = get_fridge_name(req)
+                break
+
+        if has_req:
+            in_stock = [matched_req_name]
+            missing = []
+
+            for opt in recipe["optional"]:
+                found_opt = False
+                for key in opt["keys"]:
+                    if is_in_fridge(key):
+                        in_stock.append(get_fridge_name(key))
+                        found_opt = True
+                        break
+                if not found_opt:
+                    missing.append(opt["name"])
+
+            meal_data = {
+                "title": recipe["title"],
+                "in_stock": in_stock,
+                "missing": missing,
+                "instructions": recipe["instructions"]
+            }
+
+            if not missing:
+                ready_meals.append(meal_data)
+            else:
+                missing_meals.append(meal_data)
+
+    return ready_meals, missing_meals
 
 # ---------------------------------------------------------
 # 7. MAIN INTERFACE
@@ -806,7 +927,7 @@ with tab1:
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-# --- TAB 2: CLEAN STACKED VISUAL FRIDGE INTERIOR ---
+# --- TAB 2: VISUAL FRIDGE INTERIOR ---
 with tab2:
     st.markdown("""
     <div style="display: flex; gap: 15px; margin-bottom: 12px; font-size: 12px; justify-content: center; background: #1E293B; padding: 8px; border-radius: 8px; border: 1px solid #334155;">
@@ -825,7 +946,6 @@ with tab2:
     ]
 
     for title, cats in shelves:
-        # Fetch all matching items for this shelf
         shelf_raw_items = [item for item in active_inv if item.get("category") in cats or (cats[0] == "ready_meal" and item.get("category") not in ["meat", "produce"])]
         
         total_items_count = len(shelf_raw_items)
@@ -834,7 +954,6 @@ with tab2:
         if not shelf_raw_items:
             st.markdown('<div class="empty-shelf-msg">Shelf is empty</div>', unsafe_allow_html=True)
         else:
-            # Group identical items together by (name + expiry)
             grouped_dict = {}
             for item in shelf_raw_items:
                 group_key = (item["name"].strip().title(), item.get("expiry_date", "N/A"))
@@ -842,7 +961,6 @@ with tab2:
                     grouped_dict[group_key] = []
                 grouped_dict[group_key].append(item)
 
-            # Display grouped items in clean grid columns
             grouped_keys = list(grouped_dict.keys())
             cols = st.columns(2)
             
@@ -854,7 +972,6 @@ with tab2:
                 name, exp_date = key
                 color_class, status_emoji = get_expiry_status(exp_date)
                 
-                qty_badge_html = f'<span class="qty-badge">x{qty}</span>' if qty > 1 else ''
                 label = f"{status_emoji} {name} (x{qty}) — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name} — Exp: {exp_date}"
 
                 col = cols[idx % 2]
@@ -901,11 +1018,58 @@ with tab2:
             save_user_inventory(current_user_id, [])
             st.rerun()
 
-# --- TAB 3: MEAL PLANNER ---
+# --- TAB 3: SMART GOURMET MEAL PLANNER ---
 with tab3:
-    if active_inv:
-        if st.button("🍴 Generate Gourmet Recipe Ideas"):
-            recipes = generate_smart_recipes(active_inv)
-            st.markdown(recipes)
+    st.subheader("🍴 Gourmet Meal Suggestions")
+    st.caption("Matches your current fridge inventory with complete meals & missing ingredient ideas.")
+
+    if not active_inv:
+        st.info("Your fridge is empty! Add items using the scanner or manual lookup to view meal ideas.")
     else:
-        st.warning("Add food items to your fridge before generating meal inspirations.")
+        ready_meals, missing_meals = analyze_fridge_for_meals(active_inv)
+
+        # 1. MEALS YOU CAN MAKE RIGHT NOW
+        st.markdown("### ✅ Meals You Can Make Right Now")
+        st.caption("Made 100% with ingredients currently in your fridge.")
+
+        if not ready_meals:
+            st.write(" *No complete single-dish meals available with current items alone.*")
+        else:
+            for idx, meal in enumerate(ready_meals):
+                st.markdown(f"""
+                <div class="recipe-card recipe-card-ready">
+                    <h3 style="color: #10B981; margin: 0 0 8px 0;">{meal['title']}</h3>
+                    <p style="margin: 0 0 8px 0; color: #E2E8F0; font-size: 13px;">
+                        <strong>🥦 In Your Fridge:</strong> {', '.join(meal['in_stock'])}
+                    </p>
+                    <p style="margin: 0; color: #94A3B8; font-size: 12px; font-style: italic;">
+                        <strong>Chef's Note:</strong> {meal['instructions']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # 2. MEALS YOU CAN MAKE IF YOU BUY A FEW INGREDIENTS
+        st.markdown("### 🛒 Meals You Can Make (Missing 1–2 Ingredients)")
+        st.caption("Great meal ideas requiring just a quick top-up run.")
+
+        if not missing_meals:
+            st.write(" *No missing ingredient meal suggestions available.*")
+        else:
+            for idx, meal in enumerate(missing_meals):
+                missing_str = ", ".join(meal['missing'])
+                st.markdown(f"""
+                <div class="recipe-card recipe-card-missing">
+                    <h3 style="color: #C5A059; margin: 0 0 8px 0;">{meal['title']}</h3>
+                    <p style="margin: 0 0 6px 0; color: #E2E8F0; font-size: 13px;">
+                        <strong>🥦 In Your Fridge:</strong> {', '.join(meal['in_stock'])}
+                    </p>
+                    <p style="margin: 0 0 10px 0; color: #F59E0B; font-size: 13px; font-weight: 600;">
+                        🛒 <strong>What You Need to Buy:</strong> {missing_str}
+                    </p>
+                    <p style="margin: 0; color: #94A3B8; font-size: 12px; font-style: italic;">
+                        <strong>Chef's Note:</strong> {meal['instructions']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
