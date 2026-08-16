@@ -204,16 +204,6 @@ ms_css = """
         text-align: center;
         padding: 8px 0;
     }
-    
-    .qty-badge {
-        background-color: #C5A059;
-        color: #0F172A;
-        font-weight: 800;
-        padding: 2px 7px;
-        border-radius: 10px;
-        font-size: 11px;
-        margin-left: 6px;
-    }
 
     /* Recipe Card Styling */
     .recipe-card {
@@ -229,17 +219,6 @@ ms_css = """
     }
     .recipe-card-missing {
         border-left: 5px solid #F59E0B;
-    }
-    .missing-tag {
-        background-color: rgba(245, 158, 11, 0.15);
-        color: #F59E0B;
-        border: 1px solid #F59E0B;
-        border-radius: 6px;
-        padding: 4px 8px;
-        font-size: 11px;
-        font-weight: 600;
-        display: inline-block;
-        margin-top: 6px;
     }
 </style>
 """
@@ -417,7 +396,6 @@ if "scan_target_date" not in st.session_state:
 if "manual_target_date" not in st.session_state:
     st.session_state.manual_target_date = datetime.today().date()
 
-# Top User Info Bar
 top_col1, top_col2 = st.columns([4, 1])
 with top_col1:
     st.write(f"Logged in as: **{current_user_email}**")
@@ -501,7 +479,7 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 6. ENHANCED HELPER FUNCTIONS & CATEGORY MATCHING
+# 6. HELPER FUNCTIONS
 # ---------------------------------------------------------
 def categorize_item(name_str, category_tags=[]):
     text = (name_str + " " + " ".join(category_tags)).lower()
@@ -512,11 +490,11 @@ def categorize_item(name_str, category_tags=[]):
         return "produce"
         
     meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", 
-                     "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry"]
+                     "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry", "shish"]
     if any(w in text for w in meat_keywords):
         return "meat"
         
-    dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable"]
+    dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable", "drink"]
     if any(w in text for w in dairy_keywords):
         return "dairy"
         
@@ -631,142 +609,119 @@ def process_receipt_image(image_bytes):
         return []
 
 # ---------------------------------------------------------
-# NEW CULINARY MEAL PLANNER ENGINE
+# HIGH-END CULINARY MEAL ENGINE
 # ---------------------------------------------------------
 def analyze_fridge_for_meals(inventory):
-    """Categorizes items and matches them against recipes & missing ingredient ideas."""
+    """Combines fridge items into gourmet complete dishes while ignoring raw side items as solo meals."""
     if not inventory:
         return [], []
 
-    # Sort items by expiration so earliest items are prioritized
-    sorted_inv = sorted(inventory, key=lambda x: x.get("expiry_date", "9999-99-99"))
-    
-    # Names normalized
-    item_names = [i["name"].strip().title() for i in sorted_inv]
-    item_names_lower = [i.lower() for i in item_names]
-    
-    # Helper to check if ingredient is present
-    def is_in_fridge(keyword):
-        return any(keyword in name for name in item_names_lower)
+    # Count inventory & deduplicate
+    counts = {}
+    items_map = {}
+    for item in inventory:
+        clean_name = item["name"].strip().title()
+        key = clean_name.lower()
+        counts[key] = counts.get(key, 0) + 1
+        items_map[key] = clean_name
 
-    # Helper to get exact item display name
-    def get_fridge_name(keyword):
-        for name in item_names:
-            if keyword in name.lower():
-                return name
-        return keyword.title()
+    keys = set(counts.keys())
+
+    def find_items(words):
+        return [k for k in keys if any(w in k for w in words)]
 
     ready_meals = []
     missing_meals = []
 
-    # Check for direct ready meals / pre-made dishes first
-    for item in sorted_inv:
-        cat = item.get("category")
-        name = item.get("name")
-        if cat == "ready_meal" or any(w in name.lower() for w in ["bolognese", "kebab", "burger", "curry", "pasta", "pizza"]):
-            ready_meals.append({
-                "title": f"Ready-to-Heat: {name}",
-                "in_stock": [name],
-                "missing": [],
-                "instructions": "Pre-prepared meal. Reheat thoroughly according to package instructions until piping hot."
-            })
+    # Keywords present
+    kebabs = find_items(["kebab", "shish", "kebabs"])
+    naans = find_items(["naan", "naans", "pita", "flatbread"])
+    dips = find_items(["dip", "sauce", "chutney"])
+    pickles = find_items(["pickle", "pickled", "onion"])
+    bolognese = find_items(["bolognese", "spaghetti"])
+    burgers = find_items(["burger", "burgers", "smash burger"])
+    potatoes = find_items(["potato", "potatoes", "maris piper"])
+    protein_drinks = find_items(["protein drink", "shake"])
 
-    # Recipe Database with intelligent ingredient matching
-    RECIPE_DATABASE = [
-        {
-            "title": "Gourmet Lamb Kebabs with Minted Salad & Dip",
-            "required": ["kebab", "lamb"],
-            "optional": [
-                {"keys": ["dip", "sauce", "yogurt"], "name": "Fresh Dip/Yogurt"},
-                {"keys": ["salad", "grape", "fruit", "lemon"], "name": "Side Salad/Garnish"},
-                {"keys": ["pita", "bread", "wrap"], "name": "Flatbread or Pita"}
-            ],
-            "instructions": "Grill or pan-fry the lamb kebabs until charred and cooked through. Serve alongside fresh dip and a crisp side salad."
-        },
-        {
-            "title": "Classic Spaghetti Bolognese Feast",
-            "required": ["bolognese", "spaghetti"],
-            "optional": [
-                {"keys": ["cheese", "cheddar", "parmesan"], "name": "Grated Cheese"},
-                {"keys": ["bread", "garlic"], "name": "Garlic Bread"}
-            ],
-            "instructions": "Heat the bolognese sauce gently. Toss with freshly cooked pasta and top generously with grated cheese."
-        },
-        {
-            "title": "Loaded Gourmet Smash Burgers",
-            "required": ["burger", "burgers"],
-            "optional": [
-                {"keys": ["cheese", "cheddar"], "name": "Burger Cheese Slices"},
-                {"keys": ["bun", "bread", "roll"], "name": "Brioche Buns"},
-                {"keys": ["pickle", "onion", "salad"], "name": "Pickles or Sliced Onion"}
-            ],
-            "instructions": "Sear smash patties on a high-heat griddle for crispy edges. Melt cheese on top and serve in toasted buns with pickles."
-        },
-        {
-            "title": "Pan-Seared Protein & Potato Skillet",
-            "required": ["potato", "potatoes"],
-            "optional": [
-                {"keys": ["chicken", "steak", "pork", "sausage", "bacon", "lamb"], "name": "Protein Choice (Chicken/Steak/Sausages)"},
-                {"keys": ["butter", "oil"], "name": "Butter or Herbs"},
-                {"keys": ["onion", "veg"], "name": "Sautéed Veggies"}
-            ],
-            "instructions": "Parboil potatoes, then crisp them in a pan with butter. Pair with seared protein and sautéed vegetables."
-        },
-        {
-            "title": "High-Protein Greek Yogurt Parfait",
-            "required": ["yogurt"],
-            "optional": [
-                {"keys": ["grape", "grapes", "berry", "fruit", "apple"], "name": "Fresh Fruit/Grapes"},
-                {"keys": ["honey", "oats", "granola"], "name": "Honey or Granola"}
-            ],
-            "instructions": "Layer thick Greek yogurt in a bowl with fresh fruit and top with a drizzle of honey or crisp granola."
-        },
-        {
-            "title": "Rich Chocolate Cookie Dough Dessert Bowl",
-            "required": ["cookie dough", "dough", "chocolate"],
-            "optional": [
-                {"keys": ["cream", "ice cream", "milk"], "name": "Fresh Cream or Ice Cream"},
-                {"keys": ["berry", "fruit"], "name": "Fresh Berries"}
-            ],
-            "instructions": "Bake or warm the cookie dough until gooey in the center. Serve warm with cream or fresh berries."
-        }
-    ]
+    # 1. GOURMET COMBINATION DISHES
 
-    for recipe in RECIPE_DATABASE:
-        # Check required primary ingredients
-        has_req = False
-        matched_req_name = ""
-        for req in recipe["required"]:
-            if is_in_fridge(req):
-                has_req = True
-                matched_req_name = get_fridge_name(req)
-                break
+    # Kebab / Middle Eastern Feast
+    if kebabs:
+        k_title = items_map[kebabs[0]]
+        in_stock = [f"{k_title} (x{counts[kebabs[0]]})"]
+        missing = []
 
-        if has_req:
-            in_stock = [matched_req_name]
-            missing = []
+        if naans:
+            in_stock.append(items_map[naans[0]])
+        else:
+            missing.append("Tandoori Naans or Flatbreads")
 
-            for opt in recipe["optional"]:
-                found_opt = False
-                for key in opt["keys"]:
-                    if is_in_fridge(key):
-                        in_stock.append(get_fridge_name(key))
-                        found_opt = True
-                        break
-                if not found_opt:
-                    missing.append(opt["name"])
+        if dips:
+            in_stock.append(items_map[dips[0]])
+        else:
+            missing.append("Fresh Mint Yogurt or Garlic Dip")
 
-            meal_data = {
-                "title": recipe["title"],
-                "in_stock": in_stock,
-                "missing": missing,
-                "instructions": recipe["instructions"]
-            }
+        if pickles:
+            in_stock.append(items_map[pickles[0]])
 
-            if not missing:
-                ready_meals.append(meal_data)
-            else:
-                missing_meals.append(meal_data)
+        dish_title = f"Gourmet {k_title} & Warm Naan Platter"
+        instructions = "Grill or sizzle kebabs until charred. Serve over warm naans with gourmet dips and crisp pickled red onions."
+
+        if not missing:
+            ready_meals.append({"title": dish_title, "in_stock": in_stock, "missing": [], "instructions": instructions})
+        else:
+            missing_meals.append({"title": dish_title, "in_stock": in_stock, "missing": missing, "instructions": instructions})
+
+    # Spaghetti Bolognese (Grouped into 1 Cohesive Dish)
+    if bolognese:
+        b_title = items_map[bolognese[0]]
+        qty = counts[bolognese[0]]
+        ready_meals.append({
+            "title": f"Classic Italian Spaghetti Bolognese ({qty} Servings Ready)",
+            "in_stock": [f"{b_title} (x{qty})"],
+            "missing": [],
+            "instructions": "Simmer gently until steaming hot. Pair with cracked black pepper and freshly grated Parmigiano-Reggiano."
+        })
+
+    # Gourmet Smash Burgers
+    if burgers:
+        b_title = items_map[burgers[0]]
+        in_stock = [f"{b_title} (x{counts[burgers[0]]})"]
+        missing = ["Brioche Burger Buns", "Aged Cheddar Slices"]
+
+        if pickles:
+            in_stock.append(items_map[pickles[0]])
+
+        missing_meals.append({
+            "title": f"Artisanal {b_title} Brioche Stack",
+            "in_stock": in_stock,
+            "missing": missing,
+            "instructions": "Sear patties on high heat for caramelized edges. Serve on toasted brioche with melted cheddar and tangy pickles."
+        })
+
+    # Maris Piper Potato Recipe Transformation
+    if potatoes:
+        p_title = items_map[potatoes[0]]
+        p_stock = [p_title]
+        p_missing = ["Ribeye Steak or Chicken Breasts", "Fresh Garlic & Rosemary Butter"]
+
+        missing_meals.append({
+            "title": f"Triple-Cooked Rosemary & Butter {p_title}",
+            "in_stock": p_stock,
+            "missing": p_missing,
+            "instructions": "Parboil potatoes, crush gently, and crisp in pan with butter and herbs until golden-brown. Pair with seared protein."
+        })
+
+    # Handle Protein Drinks separately as recovery shakes rather than cooked "meals"
+    if protein_drinks:
+        p_name = items_map[protein_drinks[0]]
+        qty = counts[protein_drinks[0]]
+        ready_meals.append({
+            "title": f"Post-Workout Fitness Fuel ({p_name})",
+            "in_stock": [f"{p_name} (x{qty})"],
+            "missing": [],
+            "instructions": "Chill thoroughly before serving. Perfect for immediate post-workout macro recovery."
+        })
 
     return ready_meals, missing_meals
 
@@ -1021,21 +976,20 @@ with tab2:
 # --- TAB 3: SMART GOURMET MEAL PLANNER ---
 with tab3:
     st.subheader("🍴 Gourmet Meal Suggestions")
-    st.caption("Matches your current fridge inventory with complete meals & missing ingredient ideas.")
+    st.caption("Matches your current fridge inventory into complete dishes and missing ingredient ideas.")
 
     if not active_inv:
         st.info("Your fridge is empty! Add items using the scanner or manual lookup to view meal ideas.")
     else:
         ready_meals, missing_meals = analyze_fridge_for_meals(active_inv)
 
-        # 1. MEALS YOU CAN MAKE RIGHT NOW
-        st.markdown("### ✅ Meals You Can Make Right Now")
-        st.caption("Made 100% with ingredients currently in your fridge.")
+        st.markdown("### ✅ Ready-to-Serve Meals & Feasts")
+        st.caption("Complete dishes made using the items currently in your fridge.")
 
         if not ready_meals:
-            st.write(" *No complete single-dish meals available with current items alone.*")
+            st.write(" *No complete multi-ingredient dishes available right now.*")
         else:
-            for idx, meal in enumerate(ready_meals):
+            for meal in ready_meals:
                 st.markdown(f"""
                 <div class="recipe-card recipe-card-ready">
                     <h3 style="color: #10B981; margin: 0 0 8px 0;">{meal['title']}</h3>
@@ -1050,14 +1004,13 @@ with tab3:
 
         st.divider()
 
-        # 2. MEALS YOU CAN MAKE IF YOU BUY A FEW INGREDIENTS
-        st.markdown("### 🛒 Meals You Can Make (Missing 1–2 Ingredients)")
-        st.caption("Great meal ideas requiring just a quick top-up run.")
+        st.markdown("### 🛒 Gourmet Recipes (Missing 1–2 Ingredients)")
+        st.caption("Elevated meal ideas requiring a small shopping top-up.")
 
         if not missing_meals:
-            st.write(" *No missing ingredient meal suggestions available.*")
+            st.write(" *No recipe ideas found.*")
         else:
-            for idx, meal in enumerate(missing_meals):
+            for meal in missing_meals:
                 missing_str = ", ".join(meal['missing'])
                 st.markdown(f"""
                 <div class="recipe-card recipe-card-missing">
