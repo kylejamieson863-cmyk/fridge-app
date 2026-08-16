@@ -8,6 +8,7 @@ import re
 import io
 from datetime import datetime
 from PIL import Image, ImageEnhance
+from streamlit_gsheets import GSheetsConnection
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIG & LUXURY STYLING INJECTION
@@ -152,7 +153,6 @@ ms_css = """
         margin-bottom: 25px;
     }
 
-    /* Style Streamlit Popover buttons to look like physical fridge items */
     div[data-testid="stPopover"] > button {
         background: linear-gradient(135deg, #1E293B 0%, #334155 100%) !important;
         border: 1px solid #475569 !important;
@@ -182,7 +182,7 @@ ms_css = """
 st.markdown(ms_css, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. BRANDED HEADER
+# 2. BRANDED HEADER & CLOUD STORAGE CONNECTION
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
@@ -191,6 +191,66 @@ header_html = """
 </div>
 """
 st.markdown(header_html, unsafe_allow_html=True)
+
+# Initialize Google Sheets connection
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_user_inventory(username):
+    """Fetch stored fridge items for a specific user from Google Sheets."""
+    try:
+        df = conn.read(ttl=0)
+        if df.empty or "username" not in df.columns:
+            return []
+        
+        user_rows = df[df["username"] == username]
+        inventory = []
+        for _, row in user_rows.iterrows():
+            inventory.append({
+                "id": float(row["id"]),
+                "name": str(row["name"]),
+                "category": str(row["category"]),
+                "portion": float(row["portion"]),
+                "nutrition": {
+                    "calories": str(row["calories"]),
+                    "protein": str(row["protein"]),
+                    "carbs": str(row["carbs"]),
+                    "fat": str(row["fat"])
+                },
+                "expiry_date": str(row["expiry_date"])
+            })
+        return inventory
+    except Exception:
+        return []
+
+def save_user_inventory(username, inventory):
+    """Overwrite user inventory in Google Sheets."""
+    try:
+        df = conn.read(ttl=0)
+        if not df.empty and "username" in df.columns:
+            df = df[df["username"] != username]
+        else:
+            df = pd.DataFrame()
+            
+        new_rows = []
+        for item in inventory:
+            nut = item.get("nutrition", {})
+            new_rows.append({
+                "username": username,
+                "id": item["id"],
+                "name": item["name"],
+                "category": item["category"],
+                "portion": item["portion"],
+                "calories": nut.get("calories", "N/A"),
+                "protein": nut.get("protein", "N/A"),
+                "carbs": nut.get("carbs", "N/A"),
+                "fat": nut.get("fat", "N/A"),
+                "expiry_date": item.get("expiry_date", "")
+            })
+            
+        updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) if not df.empty else pd.DataFrame(new_rows)
+        conn.update(data=updated_df)
+    except Exception as e:
+        st.error(f"Error saving to cloud: {e}")
 
 # ---------------------------------------------------------
 # 3. USER AUTHENTICATION & SIGN-UP SETUP
@@ -263,13 +323,11 @@ elif st.session_state.get("authentication_status") is None:
 # ---------------------------------------------------------
 current_username = st.session_state.get("username")
 
-if "private_inventories" not in st.session_state:
-    st.session_state.private_inventories = {}
+if "loaded_user" not in st.session_state or st.session_state.loaded_user != current_username:
+    st.session_state.active_inv = load_user_inventory(current_username)
+    st.session_state.loaded_user = current_username
 
-if current_username not in st.session_state.private_inventories:
-    st.session_state.private_inventories[current_username] = []
-
-active_inv = st.session_state.private_inventories[current_username]
+active_inv = st.session_state.active_inv
 
 if "last_processed_code" not in st.session_state:
     st.session_state.last_processed_code = None
@@ -533,6 +591,7 @@ with tab1:
                 "nutrition": nutrition,
                 "expiry_date": item_exp.strftime("%Y-%m-%d")
             })
+            save_user_inventory(current_username, active_inv)
             st.toast(f"✨ Saved to your Fridge: **{item_name}**", icon="🛒")
 
         st.divider()
@@ -556,6 +615,7 @@ with tab1:
                     "nutrition": nutrition,
                     "expiry_date": item_exp.strftime("%Y-%m-%d")
                 })
+                save_user_inventory(current_username, active_inv)
                 st.success(f"Added: **{name}**")
 
     with col2:
@@ -590,6 +650,7 @@ with tab1:
                             "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
                             "expiry_date": receipt_date.strftime("%Y-%m-%d")
                         })
+                    save_user_inventory(current_username, active_inv)
                     st.session_state.staged_receipt_items = []
                     st.success("Saved items to Fridge!")
                     st.rerun()
@@ -609,7 +670,6 @@ with tab2:
     ]
 
     for title, cats in shelves:
-        # Render LED Shelf Header
         st.markdown(f'<div class="shelf-header-banner">{title}</div>', unsafe_allow_html=True)
         
         shelf_items = [item for item in active_inv if item.get("category") in cats]
@@ -617,7 +677,6 @@ with tab2:
         if not shelf_items:
             st.markdown('<div class="empty-shelf-msg">Shelf is currently empty</div>', unsafe_allow_html=True)
         else:
-            # Grid layout for items sitting on the shelf
             cols = st.columns(2)
             for idx, item in enumerate(shelf_items):
                 col = cols[idx % 2]
@@ -647,27 +706,30 @@ with tab2:
                             item["portion"] -= 0.25
                             if item["portion"] <= 0:
                                 active_inv.remove(item)
+                            save_user_inventory(current_username, active_inv)
                             st.rerun()
                             
                         if p_col2.button("Used 1/2", key=f"half_{item['id']}"):
                             item["portion"] -= 0.50
                             if item["portion"] <= 0:
                                 active_inv.remove(item)
+                            save_user_inventory(current_username, active_inv)
                             st.rerun()
                             
                         if p_col3.button("Finished", key=f"finish_{item['id']}"):
                             active_inv.remove(item)
+                            save_user_inventory(current_username, active_inv)
                             st.rerun()
 
-        # Render Metallic Glass Shelf bar directly beneath items
         st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True) # Close fridge-container
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if active_inv:
         st.divider()
         if st.button("🗑️ Clear Entire Fridge"):
-            st.session_state.private_inventories[current_username] = []
+            st.session_state.active_inv = []
+            save_user_inventory(current_username, [])
             st.rerun()
 
 # --- TAB 3: MEAL PLANNER ---
