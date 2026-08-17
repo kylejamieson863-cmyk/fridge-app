@@ -1,3 +1,15 @@
+None selected
+
+Skip to content
+Using Gmail with screen readers
+1 of 222
+(no subject)
+Inbox
+
+Kyle Jamieson <kylejamieson863@gmail.com>
+8:44 PM (0 minutes ago)
+to me
+
 import os
 import streamlit as st
 import streamlit.components.v1 as components
@@ -276,7 +288,7 @@ def load_user_inventory(user_id):
                 "name": str(row["name"]),
                 "category": str(row["category"]),
                 "location": str(row.get("location", "Fridge")),
-                "portion": float(row.get("portion", 1.0)),
+                "portion": float(row.get("portion") if row.get("portion") is not None else 1.0),
                 "nutrition": {
                     "calories": str(row.get("calories", "N/A")),
                     "protein": str(row.get("protein", "N/A")),
@@ -986,44 +998,59 @@ def render_storage_zone(zone_name, shelves_config):
                 name, exp_date = key
                 color_class, status_emoji = get_expiry_status(exp_date, zone_name)
                 
+                # Check if top item is partially open
+                partial_status = ""
+                top_portion = float(first_item.get("portion", 1.0))
+                if top_portion < 1.0:
+                    partial_status = f" (1 Open: {int(top_portion * 100)}%)"
+
                 if zone_name == "Fridge":
-                    label = f"{status_emoji} {name} (x{qty}) — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name} — Exp: {exp_date}"
+                    label = f"{status_emoji} {name} (x{qty}){partial_status} — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name}{partial_status} — Exp: {exp_date}"
                 else:
-                    label = f"🟦 {name} (x{qty})" if qty > 1 else f"🟦 {name}"
+                    label = f"🟦 {name} (x{qty}){partial_status}" if qty > 1 else f"🟦 {name}{partial_status}"
 
                 col = cols[idx % 2]
                 with col:
                     st.markdown(f'<div class="{color_class}">', unsafe_allow_html=True)
                     with st.popover(label, use_container_width=True):
                         st.markdown(f"### **{status_emoji} {name}**")
-                        st.write(f"**Total Quantity in Stack:** {qty}")
+                        st.write(f"**Items in Stack:** {qty}")
                         if zone_name == "Fridge":
                             st.write(f"**Use-By Date:** {exp_date}")
                         
                         st.markdown("---")
-                        st.markdown("**📊 Portion & Usage Tracker:**")
-                        
-                        current_portion = float(first_item.get("portion", 1.0))
-                        st.progress(current_portion, text=f"Remaining: {int(current_portion * 100)}%")
+                        st.markdown("**🛒 Item Quantity & Usage:**")
 
-                        p_col1, p_col2, p_col3 = st.columns(3)
                         btn_key_prefix = f"{zone_name}_{shelf_idx}_{idx}_{first_item['id']}"
 
-                        if p_col1.button("1/4 Used", key=f"q_use_{btn_key_prefix}"):
+                        # Primary Stack Action: Eat 1 Full Item
+                        if st.button(f"🥣 Use 1 {name}", key=f"use_one_{btn_key_prefix}"):
+                            active_inv.remove(first_item)
+                            save_user_inventory(current_user_id, active_inv)
+                            st.toast(f"Used 1 {name}. {qty - 1} remaining in stack.", icon="🥣")
+                            st.rerun()
+
+                        # Secondary Actions: Partial Portion or Clear Stack
+                        st.markdown("**Partial Single Item Portion:**")
+                        st.progress(top_portion, text=f"Top Item Remaining: {int(top_portion * 100)}%")
+
+                        p_col1, p_col2, p_col3 = st.columns(3)
+
+                        if p_col1.button("1/4 Off", key=f"q_use_{btn_key_prefix}"):
                             first_item["portion"] -= 0.25
                             if first_item["portion"] <= 0:
                                 active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
 
-                        if p_col2.button("1/2 Used", key=f"h_use_{btn_key_prefix}"):
+                        if p_col2.button("1/2 Off", key=f"h_use_{btn_key_prefix}"):
                             first_item["portion"] -= 0.50
                             if first_item["portion"] <= 0:
                                 active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
 
-                        if p_col3.button("Finish All", key=f"fin_use_{btn_key_prefix}"):
+                        if p_col3.button("Clear Stack", key=f"fin_use_{btn_key_prefix}"):
                             for itm in item_group:
                                 active_inv.remove(itm)
                             save_user_inventory(current_user_id, active_inv)
@@ -1031,12 +1058,12 @@ def render_storage_zone(zone_name, shelves_config):
 
                         if zone_name == "Fridge":
                             st.markdown("---")
-                            if st.button("❄️ Move to Freezer", key=f"move_freezer_{btn_key_prefix}"):
+                            if st.button("❄️ Move Stack to Freezer", key=f"move_freezer_{btn_key_prefix}"):
                                 for itm in item_group:
                                     itm["location"] = "Freezer"
                                     itm["expiry_date"] = ""
                                 save_user_inventory(current_user_id, active_inv)
-                                st.toast(f"Moved {name} to Freezer!")
+                                st.toast(f"Moved {name} stack to Freezer!")
                                 st.rerun()
 
                         st.markdown("---")
@@ -1130,3 +1157,4 @@ with tab5:
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
+
