@@ -1,15 +1,3 @@
-None selected
-
-Skip to content
-Using Gmail with screen readers
-1 of 222
-(no subject)
-Inbox
-
-Kyle Jamieson <kylejamieson863@gmail.com>
-8:44 PM (0 minutes ago)
-to me
-
 import os
 import streamlit as st
 import streamlit.components.v1 as components
@@ -1157,4 +1145,3 @@ with tab5:
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
-
