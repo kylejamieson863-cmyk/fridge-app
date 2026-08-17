@@ -266,7 +266,6 @@ supabase = init_supabase()
 
 def load_user_inventory(user_identifiers):
     try:
-        # Check database against email, UUID, or any stored identifier format
         ids_to_check = [str(x) for x in user_identifiers if x]
         response = supabase.table("fridge_inventory").select("*").in_("username", ids_to_check).execute()
         rows = response.data or []
@@ -274,7 +273,7 @@ def load_user_inventory(user_identifiers):
         inventory = []
         for row in rows:
             inventory.append({
-                "id": float(row["item_id"]),
+                "id": int(row["item_id"]),
                 "name": str(row["name"]),
                 "category": str(row["category"]),
                 "location": str(row.get("location", "Fridge")),
@@ -302,20 +301,20 @@ def save_user_inventory(user_id, inventory):
                 nut = item.get("nutrition", {})
                 new_rows.append({
                     "username": str(user_id),
-                    "item_id": item["id"],
-                    "name": item["name"],
-                    "category": item["category"],
-                    "location": item.get("location", "Fridge"),
-                    "portion": item.get("portion", 1.0),
-                    "calories": nut.get("calories", "N/A"),
-                    "protein": nut.get("protein", "N/A"),
-                    "carbs": nut.get("carbs", "N/A"),
-                    "fat": nut.get("fat", "N/A"),
-                    "expiry_date": item.get("expiry_date", "")
+                    "item_id": int(item["id"]),
+                    "name": str(item["name"]),
+                    "category": str(item["category"]),
+                    "location": str(item.get("location", "Fridge")),
+                    "portion": float(item.get("portion", 1.0)),
+                    "calories": str(nut.get("calories", "N/A")),
+                    "protein": str(nut.get("protein", "N/A")),
+                    "carbs": str(nut.get("carbs", "N/A")),
+                    "fat": str(nut.get("fat", "N/A")),
+                    "expiry_date": str(item.get("expiry_date", ""))
                 })
             supabase.table("fridge_inventory").insert(new_rows).execute()
     except Exception as e:
-        st.error(f"Error saving inventory: {e}")
+        st.error(f"Persistence Error: {e}")
 
 # ---------------------------------------------------------
 # 3. AUTHENTICATION
@@ -386,10 +385,10 @@ if not st.session_state.user:
 # ---------------------------------------------------------
 current_user_email = st.session_state.user.email
 current_user_uuid = st.session_state.user.id
-current_user_id = current_user_email or current_user_uuid
+current_user_id = current_user_uuid
 
 if "loaded_user" not in st.session_state or st.session_state.loaded_user != current_user_id:
-    st.session_state.active_inv = load_user_inventory([current_user_email, current_user_uuid])
+    st.session_state.active_inv = load_user_inventory([current_user_uuid, current_user_email])
     st.session_state.loaded_user = current_user_id
 
 active_inv = st.session_state.active_inv
@@ -800,7 +799,7 @@ with tab1:
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
                 if st.button("✅ Confirm & Save"):
-                    unique_id = datetime.now().timestamp() + (time.time() % 1)
+                    unique_id = int(time.time() * 1000)
                     active_inv.append({
                         "id": unique_id,
                         "name": item["name"],
@@ -853,7 +852,7 @@ with tab1:
                     loc = manual_loc
                     nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
                 
-                unique_id = datetime.now().timestamp() + (time.time() % 1)
+                unique_id = int(time.time() * 1000)
                 active_inv.append({
                     "id": unique_id,
                     "name": name,
@@ -891,11 +890,11 @@ with tab1:
             with col_a:
                 if st.button("✅ Confirm & Save Receipts"):
                     confirmed_items = edited_df.to_dict("records")
-                    for item in confirmed_items:
-                        unique_id = datetime.now().timestamp() + (time.time() % 1)
+                    base_time = int(time.time() * 1000)
+                    for idx, item in enumerate(confirmed_items):
                         loc = str(item.get("location", "Fridge"))
                         active_inv.append({
-                            "id": unique_id,
+                            "id": base_time + idx,
                             "name": str(item["name"]),
                             "category": str(item["category"]),
                             "location": loc,
@@ -914,7 +913,6 @@ with tab1:
 
 # --- REUSABLE ZONE DISPLAY RENDERER ---
 def render_storage_zone(zone_name, shelves_config):
-    # Case-insensitive location match + fallback for empty location values
     zone_items = [
         item for item in active_inv 
         if str(item.get("location", "Fridge")).strip().title() == zone_name.title()
@@ -979,8 +977,6 @@ def render_storage_zone(zone_name, shelves_config):
                         st.progress(current_portion, text=f"Remaining: {int(current_portion * 100)}%")
 
                         p_col1, p_col2, p_col3 = st.columns(3)
-                        
-                        # Unique keys scoped by zone, shelf, group index, and item ID
                         btn_key_prefix = f"{zone_name}_{shelf_idx}_{idx}_{first_item['id']}"
 
                         if p_col1.button("1/4 Used", key=f"q_use_{btn_key_prefix}"):
