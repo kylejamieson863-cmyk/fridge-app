@@ -211,7 +211,6 @@ ms_css = """
         padding: 8px 0;
     }
 
-    /* Recipe Card Styling */
     .recipe-card {
         background: #1E293B;
         border: 1px solid #334155;
@@ -265,9 +264,11 @@ def init_supabase():
 
 supabase = init_supabase()
 
-def load_user_inventory(user_id):
+def load_user_inventory(user_identifiers):
     try:
-        response = supabase.table("fridge_inventory").select("*").eq("username", str(user_id)).execute()
+        # Check database against email, UUID, or any stored identifier format
+        ids_to_check = [str(x) for x in user_identifiers if x]
+        response = supabase.table("fridge_inventory").select("*").in_("username", ids_to_check).execute()
         rows = response.data or []
         
         inventory = []
@@ -383,11 +384,12 @@ if not st.session_state.user:
 # ---------------------------------------------------------
 # 4. ISOLATED SESSION & BARCODE SETUP
 # ---------------------------------------------------------
-current_user_id = st.session_state.user.id
 current_user_email = st.session_state.user.email
+current_user_uuid = st.session_state.user.id
+current_user_id = current_user_email or current_user_uuid
 
 if "loaded_user" not in st.session_state or st.session_state.loaded_user != current_user_id:
-    st.session_state.active_inv = load_user_inventory(current_user_id)
+    st.session_state.active_inv = load_user_inventory([current_user_email, current_user_uuid])
     st.session_state.loaded_user = current_user_id
 
 active_inv = st.session_state.active_inv
@@ -490,10 +492,8 @@ barcode_scanner = components.declare_component("barcode_scanner", path="scanner_
 # 6. HELPER FUNCTIONS & ROUTING
 # ---------------------------------------------------------
 def categorize_and_locate_item(name_str, category_tags=[]):
-    """Categorizes food types and automatically routes items into Fridge, Freezer, or Cupboard."""
     text = (name_str + " " + " ".join(category_tags)).lower()
 
-    # Determine Storage Location
     frozen_keywords = ["frozen", "ice cream", "pizza", "chips", "peas", "nuggets", "waffles", "ice", "gelato"]
     cupboard_keywords = ["canned", "tin", "pasta", "rice", "sauce", "cereal", "spices", "flour", "oil", 
                          "biscuit", "crisps", "beans", "tinned", "oats", "noodle", "sugar", "salt"]
@@ -505,7 +505,6 @@ def categorize_and_locate_item(name_str, category_tags=[]):
     else:
         location = "Fridge"
 
-    # Determine Specific Food Category
     produce_keywords = ["potato", "potatoes", "onion", "onions", "grape", "grapes", "apple", "banana", "berry",
                         "fruit", "veg", "vegetable", "salad", "produce", "pickle", "pickled", "lemon", "lime"]
     meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat",
@@ -632,9 +631,6 @@ def process_receipt_image(image_bytes):
         st.error(f"Receipt Exception: {str(e)}")
         return []
 
-# ---------------------------------------------------------
-# HIGH-END CULINARY MEAL ENGINE
-# ---------------------------------------------------------
 def analyze_inventory_for_meals(inventory):
     if not inventory:
         return [], []
@@ -918,7 +914,11 @@ with tab1:
 
 # --- REUSABLE ZONE DISPLAY RENDERER ---
 def render_storage_zone(zone_name, shelves_config):
-    zone_items = [item for item in active_inv if item.get("location", "Fridge") == zone_name]
+    # Case-insensitive location match + fallback for empty location values
+    zone_items = [
+        item for item in active_inv 
+        if str(item.get("location", "Fridge")).strip().title() == zone_name.title()
+    ]
 
     if zone_name == "Fridge":
         st.markdown("""
