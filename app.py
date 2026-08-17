@@ -538,6 +538,14 @@ def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
     default_nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
     
+    saved_location = None
+    try:
+        mem_res = supabase.table("barcode_memory").select("location").eq("barcode", barcode_clean).execute()
+        if mem_res.data and len(mem_res.data) > 0:
+            saved_location = mem_res.data[0]["location"]
+    except Exception:
+        pass
+
     for test_code in [barcode_clean, barcode_clean.zfill(13)]:
         url = f"https://world.openfoodfacts.org/api/v2/product/{test_code}.json"
         headers = {"User-Agent": "SmartPantryApp/1.0"}
@@ -557,12 +565,14 @@ def lookup_barcode(barcode_str):
                 }
                 
                 cat, loc = categorize_and_locate_item(name, categories)
-                return name, cat, loc, nutrition
+                final_loc = saved_location if saved_location else loc
+                return name, cat, final_loc, nutrition
         except Exception:
             pass
             
     cat, loc = categorize_and_locate_item(str(barcode_str))
-    return f"Scanned Item ({barcode_str})", cat, loc, default_nutrition
+    final_loc = saved_location if saved_location else loc
+    return f"Scanned Item ({barcode_str})", cat, final_loc, default_nutrition
 
 def process_receipt_image(image_bytes):
     try:
@@ -756,6 +766,7 @@ with tab1:
         if scanned_code:
             item_name, category, location, nutrition = lookup_barcode(scanned_code)
             st.session_state.pending_scanned_item = {
+                "barcode": str(scanned_code).strip(),
                 "name": item_name,
                 "category": category,
                 "location": location,
@@ -775,7 +786,11 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
 
-            selected_location = st.selectbox("Storage Location Zone:", ["Fridge", "Freezer", "Cupboard"], index=["Fridge", "Freezer", "Cupboard"].index(item["location"]))
+            selected_location = st.selectbox(
+                "Storage Location Zone:", 
+                ["Fridge", "Freezer", "Cupboard"], 
+                index=["Fridge", "Freezer", "Cupboard"].index(item["location"])
+            )
 
             if selected_location == "Fridge":
                 d_col1, d_col2 = st.columns([3, 1])
@@ -808,6 +823,16 @@ with tab1:
                         "expiry_date": st.session_state.scan_target_date.strftime("%Y-%m-%d") if selected_location == "Fridge" else ""
                     })
                     save_user_inventory(current_user_id, active_inv)
+
+                    if item.get("barcode"):
+                        try:
+                            supabase.table("barcode_memory").upsert({
+                                "barcode": str(item["barcode"]),
+                                "location": selected_location
+                            }).execute()
+                        except Exception:
+                            pass
+
                     st.session_state.pending_scanned_item = None
                     st.session_state.scan_target_date = datetime.today().date()
                     st.toast(f"✨ Added to {selected_location}: **{item['name']}**", icon="🛒")
@@ -844,6 +869,13 @@ with tab1:
             if manual_name:
                 if manual_name.isdigit():
                     name, cat, loc, nutrition = lookup_barcode(manual_name)
+                    try:
+                        supabase.table("barcode_memory").upsert({
+                            "barcode": str(manual_name).strip(),
+                            "location": manual_loc
+                        }).execute()
+                    except Exception:
+                        pass
                 else:
                     name = manual_name
                     cat = manual_cat
