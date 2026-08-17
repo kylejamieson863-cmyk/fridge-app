@@ -538,11 +538,13 @@ def lookup_barcode(barcode_str):
     barcode_clean = str(barcode_str).strip()
     default_nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
     
+    saved_name = None
     saved_location = None
     try:
-        mem_res = supabase.table("barcode_memory").select("location").eq("barcode", barcode_clean).execute()
+        mem_res = supabase.table("barcode_memory").select("name, location").eq("barcode", barcode_clean).execute()
         if mem_res.data and len(mem_res.data) > 0:
-            saved_location = mem_res.data[0]["location"]
+            saved_name = mem_res.data[0].get("name")
+            saved_location = mem_res.data[0].get("location")
     except Exception:
         pass
 
@@ -553,7 +555,7 @@ def lookup_barcode(barcode_str):
             res = requests.get(url, headers=headers, timeout=3).json()
             if res.get("status") == 1:
                 product = res.get("product", {})
-                name = product.get("product_name") or product.get("product_name_en") or f"Product ({barcode_str})"
+                off_name = product.get("product_name") or product.get("product_name_en") or f"Product ({barcode_str})"
                 categories = product.get("categories_tags", [])
                 
                 nutriments = product.get("nutriments", {})
@@ -564,15 +566,17 @@ def lookup_barcode(barcode_str):
                     "fat": f"{nutriments.get('fat_100g', 'N/A')} g"
                 }
                 
-                cat, loc = categorize_and_locate_item(name, categories)
+                cat, loc = categorize_and_locate_item(off_name, categories)
+                final_name = saved_name if saved_name else off_name
                 final_loc = saved_location if saved_location else loc
-                return name, cat, final_loc, nutrition
+                return final_name, cat, final_loc, nutrition
         except Exception:
             pass
             
     cat, loc = categorize_and_locate_item(str(barcode_str))
+    final_name = saved_name if saved_name else f"Scanned Item ({barcode_str})"
     final_loc = saved_location if saved_location else loc
-    return f"Scanned Item ({barcode_str})", cat, final_loc, default_nutrition
+    return final_name, cat, final_loc, default_nutrition
 
 def process_receipt_image(image_bytes):
     try:
@@ -781,10 +785,11 @@ with tab1:
             st.markdown(f"""
             <div class="scan-card">
                 <h3 style="color: #C5A059; margin-top:0;">🛒 Item Scanned</h3>
-                <h2 style="color: #FFFFFF; margin-bottom:5px;">{item['name']}</h2>
                 <p style="color: #38BDF8; margin-bottom:0;">Auto-Routed Zone: <strong>{item['location']}</strong></p>
             </div>
             """, unsafe_allow_html=True)
+
+            scanned_name = st.text_input("Product Name:", value=item["name"], key="scanned_name_input")
 
             selected_location = st.selectbox(
                 "Storage Location Zone:", 
@@ -812,10 +817,12 @@ with tab1:
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
                 if st.button("✅ Confirm & Save"):
+                    final_item_name = scanned_name.strip() if scanned_name else item["name"]
                     unique_id = datetime.now().timestamp() + (time.time() % 1)
+                    
                     active_inv.append({
                         "id": unique_id,
-                        "name": item["name"],
+                        "name": final_item_name,
                         "category": item["category"],
                         "location": selected_location,
                         "portion": 1.0,
@@ -828,6 +835,7 @@ with tab1:
                         try:
                             supabase.table("barcode_memory").upsert({
                                 "barcode": str(item["barcode"]),
+                                "name": final_item_name,
                                 "location": selected_location
                             }).execute()
                         except Exception:
@@ -835,7 +843,7 @@ with tab1:
 
                     st.session_state.pending_scanned_item = None
                     st.session_state.scan_target_date = datetime.today().date()
-                    st.toast(f"✨ Added to {selected_location}: **{item['name']}**", icon="🛒")
+                    st.toast(f"✨ Added to {selected_location}: **{final_item_name}**", icon="🛒")
                     st.rerun()
 
             with c_btn2:
@@ -872,6 +880,7 @@ with tab1:
                     try:
                         supabase.table("barcode_memory").upsert({
                             "barcode": str(manual_name).strip(),
+                            "name": name,
                             "location": manual_loc
                         }).execute()
                     except Exception:
@@ -986,7 +995,6 @@ def render_storage_zone(zone_name, shelves_config):
                 name, exp_date = key
                 color_class, status_emoji = get_expiry_status(exp_date, zone_name)
                 
-                # Check if top item is partially open
                 partial_status = ""
                 top_portion = float(first_item.get("portion", 1.0))
                 if top_portion < 1.0:
@@ -1011,14 +1019,12 @@ def render_storage_zone(zone_name, shelves_config):
 
                         btn_key_prefix = f"{zone_name}_{shelf_idx}_{idx}_{first_item['id']}"
 
-                        # Primary Stack Action: Eat 1 Full Item
                         if st.button(f"🥣 Use 1 {name}", key=f"use_one_{btn_key_prefix}"):
                             active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.toast(f"Used 1 {name}. {qty - 1} remaining in stack.", icon="🥣")
                             st.rerun()
 
-                        # Secondary Actions: Partial Portion or Clear Stack
                         st.markdown("**Partial Single Item Portion:**")
                         st.progress(top_portion, text=f"Top Item Remaining: {int(top_portion * 100)}%")
 
