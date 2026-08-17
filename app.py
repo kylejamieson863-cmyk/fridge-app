@@ -931,7 +931,7 @@ def render_storage_zone(zone_name, shelves_config):
 
     st.markdown('<div class="storage-container">', unsafe_allow_html=True)
     
-    for title, cats in shelves_config:
+    for shelf_idx, (title, cats) in enumerate(shelves_config):
         shelf_raw_items = [item for item in zone_items if item.get("category") in cats or (cats[0] == "ready_meal" and item.get("category") not in ["meat", "produce"])]
         
         total_items_count = len(shelf_raw_items)
@@ -979,21 +979,25 @@ def render_storage_zone(zone_name, shelves_config):
                         st.progress(current_portion, text=f"Remaining: {int(current_portion * 100)}%")
 
                         p_col1, p_col2, p_col3 = st.columns(3)
-                        if p_col1.button("1/4 Used", key=f"q_use_{first_item['id']}"):
+                        
+                        # Unique keys scoped by zone, shelf, group index, and item ID
+                        btn_key_prefix = f"{zone_name}_{shelf_idx}_{idx}_{first_item['id']}"
+
+                        if p_col1.button("1/4 Used", key=f"q_use_{btn_key_prefix}"):
                             first_item["portion"] -= 0.25
                             if first_item["portion"] <= 0:
                                 active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
 
-                        if p_col2.button("1/2 Used", key=f"h_use_{first_item['id']}"):
+                        if p_col2.button("1/2 Used", key=f"h_use_{btn_key_prefix}"):
                             first_item["portion"] -= 0.50
                             if first_item["portion"] <= 0:
                                 active_inv.remove(first_item)
                             save_user_inventory(current_user_id, active_inv)
                             st.rerun()
 
-                        if p_col3.button("Finish All", key=f"fin_use_{first_item['id']}"):
+                        if p_col3.button("Finish All", key=f"fin_use_{btn_key_prefix}"):
                             for itm in item_group:
                                 active_inv.remove(itm)
                             save_user_inventory(current_user_id, active_inv)
@@ -1001,7 +1005,7 @@ def render_storage_zone(zone_name, shelves_config):
 
                         if zone_name == "Fridge":
                             st.markdown("---")
-                            if st.button("❄️ Move to Freezer", key=f"move_freezer_{first_item['id']}"):
+                            if st.button("❄️ Move to Freezer", key=f"move_freezer_{btn_key_prefix}"):
                                 for itm in item_group:
                                     itm["location"] = "Freezer"
                                     itm["expiry_date"] = ""
