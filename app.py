@@ -14,7 +14,7 @@ from supabase import create_client
 # 1. PAGE CONFIG & LUXURY STYLING INJECTION
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Smart Fridge | Food & Meal Planner",
+    page_title="Smart Pantry | Kitchen Management",
     page_icon="🧊",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -127,7 +127,7 @@ ms_css = """
         box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
 
-    .fridge-container {
+    .storage-container {
         background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
         border: 6px solid #334155;
         border-radius: 16px;
@@ -193,6 +193,12 @@ ms_css = """
         background: linear-gradient(135deg, #0D261E 0%, #1E293B 100%) !important;
     }
 
+    div[data-testid="stPopover"].zone-stable > button {
+        border: 2px solid #38BDF8 !important;
+        border-bottom: 4px solid #38BDF8 !important;
+        background: linear-gradient(135deg, #0C2A3A 0%, #1E293B 100%) !important;
+    }
+
     div[data-testid="stPopover"] > button:hover {
         transform: translateY(-2px);
     }
@@ -205,7 +211,6 @@ ms_css = """
         padding: 8px 0;
     }
 
-    /* Recipe Card Styling */
     .recipe-card {
         background: #1E293B;
         border: 1px solid #334155;
@@ -245,8 +250,8 @@ st.components.v1.html(
 # ---------------------------------------------------------
 header_html = """
 <div class="ms-header">
-    <div class="ms-brand">SMART FRIDGE</div>
-    <div class="ms-subbrand">FOOD &bull; MEAL PLANNER</div>
+    <div class="ms-brand">SMART PANTRY</div>
+    <div class="ms-subbrand">FOOD &bull; STORAGE &bull; MEAL PLANNER</div>
 </div>
 """
 st.markdown(header_html, unsafe_allow_html=True)
@@ -270,7 +275,8 @@ def load_user_inventory(user_id):
                 "id": float(row["item_id"]),
                 "name": str(row["name"]),
                 "category": str(row["category"]),
-                "portion": float(row["portion"]),
+                "location": str(row.get("location", "Fridge")),
+                "portion": float(row.get("portion", 1.0)),
                 "nutrition": {
                     "calories": str(row.get("calories", "N/A")),
                     "protein": str(row.get("protein", "N/A")),
@@ -297,7 +303,8 @@ def save_user_inventory(user_id, inventory):
                     "item_id": item["id"],
                     "name": item["name"],
                     "category": item["category"],
-                    "portion": item["portion"],
+                    "location": item.get("location", "Fridge"),
+                    "portion": item.get("portion", 1.0),
                     "calories": nut.get("calories", "N/A"),
                     "protein": nut.get("protein", "N/A"),
                     "carbs": nut.get("carbs", "N/A"),
@@ -479,30 +486,42 @@ with open("scanner_component/index.html", "w") as f:
 barcode_scanner = components.declare_component("barcode_scanner", path="scanner_component")
 
 # ---------------------------------------------------------
-# 6. HELPER FUNCTIONS
+# 6. HELPER FUNCTIONS & ROUTING
 # ---------------------------------------------------------
-def categorize_item(name_str, category_tags=[]):
+def categorize_and_locate_item(name_str, category_tags=[]):
     text = (name_str + " " + " ".join(category_tags)).lower()
-    
-    produce_keywords = ["potato", "potatoes", "onion", "onions", "grape", "grapes", "apple", "banana", "berry", 
-                        "fruit", "veg", "vegetable", "salad", "produce", "pickle", "pickled", "lemon", "lime"]
-    if any(w in text for w in produce_keywords):
-        return "produce"
-        
-    meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat", 
-                     "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry", "shish"]
-    if any(w in text for w in meat_keywords):
-        return "meat"
-        
-    dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable", "drink"]
-    if any(w in text for w in dairy_keywords):
-        return "dairy"
-        
-    return "ready_meal"
 
-def get_expiry_status(expiry_str):
-    if not expiry_str:
-        return "exp-green", "🟢"
+    frozen_keywords = ["frozen", "ice cream", "pizza", "chips", "peas", "nuggets", "waffles", "ice", "gelato"]
+    cupboard_keywords = ["canned", "tin", "pasta", "rice", "sauce", "cereal", "spices", "flour", "oil", 
+                         "biscuit", "crisps", "beans", "tinned", "oats", "noodle", "sugar", "salt"]
+
+    if any(w in text for w in frozen_keywords):
+        location = "Freezer"
+    elif any(w in text for w in cupboard_keywords):
+        location = "Cupboard"
+    else:
+        location = "Fridge"
+
+    produce_keywords = ["potato", "potatoes", "onion", "onions", "grape", "grapes", "apple", "banana", "berry",
+                        "fruit", "veg", "vegetable", "salad", "produce", "pickle", "pickled", "lemon", "lime"]
+    meat_keywords = ["chicken", "chk", "beef", "steak", "pork", "lamb", "bacon", "sausage", "meat",
+                     "mince", "salmon", "fish", "burger", "burgers", "kebabs", "kebab", "poultry", "shish"]
+    dairy_keywords = ["milk", "cheese", "butter", "cream", "yogurt", "cheddar", "dip", "egg", "eggs", "lurpak", "spreadable", "drink"]
+
+    if any(w in text for w in produce_keywords):
+        category = "produce"
+    elif any(w in text for w in meat_keywords):
+        category = "meat"
+    elif any(w in text for w in dairy_keywords):
+        category = "dairy"
+    else:
+        category = "ready_meal"
+
+    return category, location
+
+def get_expiry_status(expiry_str, location="Fridge"):
+    if location in ["Freezer", "Cupboard"] or not expiry_str:
+        return "zone-stable", "🟦"
     try:
         exp_date = datetime.strptime(expiry_str, "%Y-%m-%d").date()
         days_left = (exp_date - datetime.today().date()).days
@@ -537,12 +556,13 @@ def lookup_barcode(barcode_str):
                     "fat": f"{nutriments.get('fat_100g', 'N/A')} g"
                 }
                 
-                cat = categorize_item(name, categories)
-                return name, cat, nutrition
+                cat, loc = categorize_and_locate_item(name, categories)
+                return name, cat, loc, nutrition
         except Exception:
             pass
             
-    return f"Scanned Item ({barcode_str})", categorize_item(str(barcode_str)), default_nutrition
+    cat, loc = categorize_and_locate_item(str(barcode_str))
+    return f"Scanned Item ({barcode_str})", cat, loc, default_nutrition
 
 def process_receipt_image(image_bytes):
     try:
@@ -576,8 +596,8 @@ def process_receipt_image(image_bytes):
         lines = raw_text.split('\r\n')
         
         ignore_keywords = [
-            "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard", 
-            "card", "balance", "thank", "receipt", "store", "tel", "date", "time", 
+            "total", "subtotal", "vat", "tax", "change", "cash", "visa", "mastercard",
+            "card", "balance", "thank", "receipt", "store", "tel", "date", "time",
             "savings", "discount", "auth", "merchant", "pound", "http", "marks", "spencer",
             "manager", "street", "lane", "road", "order", "server", "table", "largs",
             "ka30", "vat no", "www", "saving", "tendered", "declined", "items", "m&s"
@@ -600,23 +620,18 @@ def process_receipt_image(image_bytes):
             if len(letters_only) < 3:
                 continue
                 
-            cat = categorize_item(cleaned_item)
-            extracted_items.append({"name": cleaned_item.title(), "category": cat})
+            cat, loc = categorize_and_locate_item(cleaned_item)
+            extracted_items.append({"name": cleaned_item.title(), "category": cat, "location": loc})
             
         return extracted_items
     except Exception as e:
         st.error(f"Receipt Exception: {str(e)}")
         return []
 
-# ---------------------------------------------------------
-# HIGH-END CULINARY MEAL ENGINE
-# ---------------------------------------------------------
-def analyze_fridge_for_meals(inventory):
-    """Combines fridge items into gourmet complete dishes while ignoring raw side items as solo meals."""
+def analyze_inventory_for_meals(inventory):
     if not inventory:
         return [], []
 
-    # Count inventory & deduplicate
     counts = {}
     items_map = {}
     for item in inventory:
@@ -633,7 +648,6 @@ def analyze_fridge_for_meals(inventory):
     ready_meals = []
     missing_meals = []
 
-    # Keywords present
     kebabs = find_items(["kebab", "shish", "kebabs"])
     naans = find_items(["naan", "naans", "pita", "flatbread"])
     dips = find_items(["dip", "sauce", "chutney"])
@@ -643,9 +657,6 @@ def analyze_fridge_for_meals(inventory):
     potatoes = find_items(["potato", "potatoes", "maris piper"])
     protein_drinks = find_items(["protein drink", "shake"])
 
-    # 1. GOURMET COMBINATION DISHES
-
-    # Kebab / Middle Eastern Feast
     if kebabs:
         k_title = items_map[kebabs[0]]
         in_stock = [f"{k_title} (x{counts[kebabs[0]]})"]
@@ -672,7 +683,6 @@ def analyze_fridge_for_meals(inventory):
         else:
             missing_meals.append({"title": dish_title, "in_stock": in_stock, "missing": missing, "instructions": instructions})
 
-    # Spaghetti Bolognese (Grouped into 1 Cohesive Dish)
     if bolognese:
         b_title = items_map[bolognese[0]]
         qty = counts[bolognese[0]]
@@ -683,7 +693,6 @@ def analyze_fridge_for_meals(inventory):
             "instructions": "Simmer gently until steaming hot. Pair with cracked black pepper and freshly grated Parmigiano-Reggiano."
         })
 
-    # Gourmet Smash Burgers
     if burgers:
         b_title = items_map[burgers[0]]
         in_stock = [f"{b_title} (x{counts[burgers[0]]})"]
@@ -699,7 +708,6 @@ def analyze_fridge_for_meals(inventory):
             "instructions": "Sear patties on high heat for caramelized edges. Serve on toasted brioche with melted cheddar and tangy pickles."
         })
 
-    # Maris Piper Potato Recipe Transformation
     if potatoes:
         p_title = items_map[potatoes[0]]
         p_stock = [p_title]
@@ -712,7 +720,6 @@ def analyze_fridge_for_meals(inventory):
             "instructions": "Parboil potatoes, crush gently, and crisp in pan with butter and herbs until golden-brown. Pair with seared protein."
         })
 
-    # Handle Protein Drinks separately as recovery shakes rather than cooked "meals"
     if protein_drinks:
         p_name = items_map[protein_drinks[0]]
         qty = counts[protein_drinks[0]]
@@ -728,7 +735,13 @@ def analyze_fridge_for_meals(inventory):
 # ---------------------------------------------------------
 # 7. MAIN INTERFACE
 # ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["🛒 Trolley Scanner", "🧊 Fridge Interior", "🍴 Gourmet Meal Planner"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🛒 Trolley Scanner", 
+    "🧊 Fridge", 
+    "❄️ Freezer", 
+    "🥫 Cupboard", 
+    "🍴 Meal Planner"
+])
 
 # --- TAB 1: SCANNING & RECEIPT ---
 with tab1:
@@ -741,10 +754,11 @@ with tab1:
         scanned_code = barcode_scanner(key="live_barcode_reader")
         
         if scanned_code:
-            item_name, category, nutrition = lookup_barcode(scanned_code)
+            item_name, category, location, nutrition = lookup_barcode(scanned_code)
             st.session_state.pending_scanned_item = {
                 "name": item_name,
                 "category": category,
+                "location": location,
                 "nutrition": nutrition
             }
             st.session_state.scan_target_date = datetime.today().date()
@@ -756,23 +770,29 @@ with tab1:
             st.markdown(f"""
             <div class="scan-card">
                 <h3 style="color: #C5A059; margin-top:0;">🛒 Item Scanned</h3>
-                <h2 style="color: #FFFFFF; margin-bottom:10px;">{item['name']}</h2>
+                <h2 style="color: #FFFFFF; margin-bottom:5px;">{item['name']}</h2>
+                <p style="color: #38BDF8; margin-bottom:0;">Auto-Routed Zone: <strong>{item['location']}</strong></p>
             </div>
             """, unsafe_allow_html=True)
 
-            d_col1, d_col2 = st.columns([3, 1])
-            with d_col1:
-                selected_scan_date = st.date_input(
-                    "📅 Select Use-By / Best Before Date:",
-                    value=st.session_state.scan_target_date,
-                    key="scan_date_picker"
-                )
-                st.session_state.scan_target_date = selected_scan_date
-            with d_col2:
-                st.write("&nbsp;")
-                if st.button("➕ 30 Days", key="add_30_scan"):
-                    st.session_state.scan_target_date += timedelta(days=30)
-                    st.rerun()
+            selected_location = st.selectbox("Storage Location Zone:", ["Fridge", "Freezer", "Cupboard"], index=["Fridge", "Freezer", "Cupboard"].index(item["location"]))
+
+            if selected_location == "Fridge":
+                d_col1, d_col2 = st.columns([3, 1])
+                with d_col1:
+                    selected_scan_date = st.date_input(
+                        "📅 Select Use-By / Best Before Date:",
+                        value=st.session_state.scan_target_date,
+                        key="scan_date_picker"
+                    )
+                    st.session_state.scan_target_date = selected_scan_date
+                with d_col2:
+                    st.write("&nbsp;")
+                    if st.button("➕ 30 Days", key="add_30_scan"):
+                        st.session_state.scan_target_date += timedelta(days=30)
+                        st.rerun()
+            else:
+                st.info("ℹ️ Items in Freezer or Cupboard do not require tracking strict use-by dates.")
 
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
@@ -782,14 +802,15 @@ with tab1:
                         "id": unique_id,
                         "name": item["name"],
                         "category": item["category"],
+                        "location": selected_location,
                         "portion": 1.0,
                         "nutrition": item["nutrition"],
-                        "expiry_date": st.session_state.scan_target_date.strftime("%Y-%m-%d")
+                        "expiry_date": st.session_state.scan_target_date.strftime("%Y-%m-%d") if selected_location == "Fridge" else ""
                     })
                     save_user_inventory(current_user_id, active_inv)
                     st.session_state.pending_scanned_item = None
                     st.session_state.scan_target_date = datetime.today().date()
-                    st.toast(f"✨ Added to Fridge: **{item['name']}**", icon="🛒")
+                    st.toast(f"✨ Added to {selected_location}: **{item['name']}**", icon="🛒")
                     st.rerun()
 
             with c_btn2:
@@ -802,28 +823,31 @@ with tab1:
         st.caption("Quick Manual Lookup:")
         manual_name = st.text_input("Product Name or Barcode Digits:", key="manual_barcode")
         manual_cat = st.selectbox("Category:", ["meat", "dairy", "produce", "ready_meal"])
+        manual_loc = st.selectbox("Storage Location:", ["Fridge", "Freezer", "Cupboard"])
         
-        m_col1, m_col2 = st.columns([3, 1])
-        with m_col1:
-            selected_manual_date = st.date_input(
-                "Use-By Date:", 
-                value=st.session_state.manual_target_date, 
-                key="manual_date_picker"
-            )
-            st.session_state.manual_target_date = selected_manual_date
-        with m_col2:
-            st.write("&nbsp;")
-            if st.button("➕ 30 Days", key="add_30_manual"):
-                st.session_state.manual_target_date += timedelta(days=30)
-                st.rerun()
+        if manual_loc == "Fridge":
+            m_col1, m_col2 = st.columns([3, 1])
+            with m_col1:
+                selected_manual_date = st.date_input(
+                    "Use-By Date:",
+                    value=st.session_state.manual_target_date,
+                    key="manual_date_picker"
+                )
+                st.session_state.manual_target_date = selected_manual_date
+            with m_col2:
+                st.write("&nbsp;")
+                if st.button("➕ 30 Days", key="add_30_manual"):
+                    st.session_state.manual_target_date += timedelta(days=30)
+                    st.rerun()
         
-        if st.button("Add Item to Fridge"):
+        if st.button("Add Item to Storage"):
             if manual_name:
                 if manual_name.isdigit():
-                    name, cat, nutrition = lookup_barcode(manual_name)
+                    name, cat, loc, nutrition = lookup_barcode(manual_name)
                 else:
                     name = manual_name
-                    cat = categorize_item(manual_name) if manual_cat == "ready_meal" else manual_cat
+                    cat = manual_cat
+                    loc = manual_loc
                     nutrition = {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"}
                 
                 unique_id = datetime.now().timestamp() + (time.time() % 1)
@@ -831,13 +855,14 @@ with tab1:
                     "id": unique_id,
                     "name": name,
                     "category": cat,
+                    "location": loc,
                     "portion": 1.0,
                     "nutrition": nutrition,
-                    "expiry_date": st.session_state.manual_target_date.strftime("%Y-%m-%d")
+                    "expiry_date": st.session_state.manual_target_date.strftime("%Y-%m-%d") if loc == "Fridge" else ""
                 })
                 save_user_inventory(current_user_id, active_inv)
                 st.session_state.manual_target_date = datetime.today().date()
-                st.success(f"Added: **{name}**")
+                st.success(f"Added to {loc}: **{name}**")
                 st.rerun()
 
     with col2:
@@ -845,7 +870,7 @@ with tab1:
         st.caption("Snap a photo of your receipt")
         
         receipt_photo = st.file_uploader("Upload Receipt Image:", type=["jpg", "png", "jpeg"], key="receipt_upload")
-        receipt_date = st.date_input("Use-By Date for Receipt Items:", datetime.today(), key="receipt_exp_date")
+        receipt_date = st.date_input("Use-By Date for Fresh Receipt Items:", datetime.today(), key="receipt_exp_date")
         
         if receipt_photo:
             if st.button("📄 Scan Receipt"):
@@ -865,43 +890,45 @@ with tab1:
                     confirmed_items = edited_df.to_dict("records")
                     for item in confirmed_items:
                         unique_id = datetime.now().timestamp() + (time.time() % 1)
+                        loc = str(item.get("location", "Fridge"))
                         active_inv.append({
                             "id": unique_id,
                             "name": str(item["name"]),
                             "category": str(item["category"]),
+                            "location": loc,
                             "portion": 1.0,
                             "nutrition": {"calories": "N/A", "protein": "N/A", "carbs": "N/A", "fat": "N/A"},
-                            "expiry_date": receipt_date.strftime("%Y-%m-%d")
+                            "expiry_date": receipt_date.strftime("%Y-%m-%d") if loc == "Fridge" else ""
                         })
                     save_user_inventory(current_user_id, active_inv)
                     st.session_state.staged_receipt_items = []
-                    st.success("Saved items to Fridge!")
+                    st.success("Saved receipt items into respective zones!")
                     st.rerun()
             with col_b:
                 if st.button("❌ Discard Receipt"):
                     st.session_state.staged_receipt_items = []
                     st.rerun()
 
-# --- TAB 2: VISUAL FRIDGE INTERIOR ---
-with tab2:
-    st.markdown("""
-    <div style="display: flex; gap: 15px; margin-bottom: 12px; font-size: 12px; justify-content: center; background: #1E293B; padding: 8px; border-radius: 8px; border: 1px solid #334155;">
-        <span>🔴 Today/Tomorrow (&le; 1 day)</span>
-        <span>🟠 2–3 Days</span>
-        <span>🟢 Safe (&ge; 4 Days)</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="fridge-container">', unsafe_allow_html=True)
-    
-    shelves = [
-        ("🥛 TOP SHELF — Dairy, Drinks & Prepared Items", ["dairy", "ready_meal"]),
-        ("🥩 MIDDLE SHELF — Meat & Poultry", ["meat"]),
-        ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
+# --- REUSABLE ZONE DISPLAY RENDERER ---
+def render_storage_zone(zone_name, shelves_config):
+    zone_items = [
+        item for item in active_inv 
+        if str(item.get("location", "Fridge")).strip().title() == zone_name.title()
     ]
 
-    for title, cats in shelves:
-        shelf_raw_items = [item for item in active_inv if item.get("category") in cats or (cats[0] == "ready_meal" and item.get("category") not in ["meat", "produce"])]
+    if zone_name == "Fridge":
+        st.markdown("""
+        <div style="display: flex; gap: 15px; margin-bottom: 12px; font-size: 12px; justify-content: center; background: #1E293B; padding: 8px; border-radius: 8px; border: 1px solid #334155;">
+            <span>🔴 Today/Tomorrow (&le; 1 day)</span>
+            <span>🟠 2–3 Days</span>
+            <span>🟢 Safe (&ge; 4 Days)</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div class="storage-container">', unsafe_allow_html=True)
+    
+    for shelf_idx, (title, cats) in enumerate(shelves_config):
+        shelf_raw_items = [item for item in zone_items if item.get("category") in cats or (cats[0] == "ready_meal" and item.get("category") not in ["meat", "produce"])]
         
         total_items_count = len(shelf_raw_items)
         st.markdown(f'<div class="shelf-header-banner"><span>{title}</span><span>{total_items_count} ITEMS</span></div>', unsafe_allow_html=True)
@@ -925,9 +952,12 @@ with tab2:
                 qty = len(item_group)
                 
                 name, exp_date = key
-                color_class, status_emoji = get_expiry_status(exp_date)
+                color_class, status_emoji = get_expiry_status(exp_date, zone_name)
                 
-                label = f"{status_emoji} {name} (x{qty}) — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name} — Exp: {exp_date}"
+                if zone_name == "Fridge":
+                    label = f"{status_emoji} {name} (x{qty}) — Exp: {exp_date}" if qty > 1 else f"{status_emoji} {name} — Exp: {exp_date}"
+                else:
+                    label = f"🟦 {name} (x{qty})" if qty > 1 else f"🟦 {name}"
 
                 col = cols[idx % 2]
                 with col:
@@ -935,8 +965,48 @@ with tab2:
                     with st.popover(label, use_container_width=True):
                         st.markdown(f"### **{status_emoji} {name}**")
                         st.write(f"**Total Quantity in Stack:** {qty}")
-                        st.write(f"**Use-By Date:** {exp_date}")
+                        if zone_name == "Fridge":
+                            st.write(f"**Use-By Date:** {exp_date}")
                         
+                        st.markdown("---")
+                        st.markdown("**📊 Portion & Usage Tracker:**")
+                        
+                        current_portion = float(first_item.get("portion", 1.0))
+                        st.progress(current_portion, text=f"Remaining: {int(current_portion * 100)}%")
+
+                        p_col1, p_col2, p_col3 = st.columns(3)
+                        btn_key_prefix = f"{zone_name}_{shelf_idx}_{idx}_{first_item['id']}"
+
+                        if p_col1.button("1/4 Used", key=f"q_use_{btn_key_prefix}"):
+                            first_item["portion"] -= 0.25
+                            if first_item["portion"] <= 0:
+                                active_inv.remove(first_item)
+                            save_user_inventory(current_user_id, active_inv)
+                            st.rerun()
+
+                        if p_col2.button("1/2 Used", key=f"h_use_{btn_key_prefix}"):
+                            first_item["portion"] -= 0.50
+                            if first_item["portion"] <= 0:
+                                active_inv.remove(first_item)
+                            save_user_inventory(current_user_id, active_inv)
+                            st.rerun()
+
+                        if p_col3.button("Finish All", key=f"fin_use_{btn_key_prefix}"):
+                            for itm in item_group:
+                                active_inv.remove(itm)
+                            save_user_inventory(current_user_id, active_inv)
+                            st.rerun()
+
+                        if zone_name == "Fridge":
+                            st.markdown("---")
+                            if st.button("❄️ Move to Freezer", key=f"move_freezer_{btn_key_prefix}"):
+                                for itm in item_group:
+                                    itm["location"] = "Freezer"
+                                    itm["expiry_date"] = ""
+                                save_user_inventory(current_user_id, active_inv)
+                                st.toast(f"Moved {name} to Freezer!")
+                                st.rerun()
+
                         st.markdown("---")
                         st.markdown("**📊 Nutrition Info (per 100g):**")
                         nut = first_item.get("nutrition", {})
@@ -944,47 +1014,49 @@ with tab2:
                         st.write(f"• **Protein:** {nut.get('protein', 'N/A')}")
                         st.write(f"• **Carbs:** {nut.get('carbs', 'N/A')}")
                         st.write(f"• **Fat:** {nut.get('fat', 'N/A')}")
-                        
-                        st.markdown("---")
-                        st.markdown("**🍽️ Log Usage / Consume:**")
-                        
-                        btn_col1, btn_col2 = st.columns(2)
-                        if btn_col1.button(f"Consume 1 Unit", key=f"use_one_{first_item['id']}"):
-                            active_inv.remove(first_item)
-                            save_user_inventory(current_user_id, active_inv)
-                            st.rerun()
-                            
-                        if btn_col2.button(f"Clear All ({qty})", key=f"clear_all_{first_item['id']}"):
-                            for itm in item_group:
-                                active_inv.remove(itm)
-                            save_user_inventory(current_user_id, active_inv)
-                            st.rerun()
-                            
+
                     st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="glass-shelf-line"></div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    if active_inv:
-        st.divider()
-        if st.button("🗑️ Clear Entire Fridge"):
-            st.session_state.active_inv = []
-            save_user_inventory(current_user_id, [])
-            st.rerun()
+# --- TAB 2: FRIDGE INTERIOR ---
+with tab2:
+    render_storage_zone("Fridge", [
+        ("🥛 TOP SHELF — Dairy, Drinks & Prepared Items", ["dairy", "ready_meal"]),
+        ("🥩 MIDDLE SHELF — Meat & Poultry", ["meat"]),
+        ("🥗 CRISPER DRAWER — Fresh Produce", ["produce"])
+    ])
 
-# --- TAB 3: SMART GOURMET MEAL PLANNER ---
+# --- TAB 3: FREEZER INTERIOR ---
 with tab3:
+    render_storage_zone("Freezer", [
+        ("🍕 TOP DRAWER — Frozen Ready Meals & Snacks", ["ready_meal"]),
+        ("🥩 MIDDLE DRAWER — Frozen Meat, Fish & Poultry", ["meat"]),
+        ("🥦 BOTTOM DRAWER — Frozen Produce, Fruit & Veg", ["produce", "dairy"])
+    ])
+
+# --- TAB 4: CUPBOARD INTERIOR ---
+with tab4:
+    render_storage_zone("Cupboard", [
+        ("🥫 TOP SHELF — Canned Foods & Tins", ["ready_meal"]),
+        ("🍝 MIDDLE SHELF — Dry Grains, Pasta & Sauces", ["produce", "meat"]),
+        ("☕ BOTTOM SHELF — Snacks, Spices & Essentials", ["dairy"])
+    ])
+
+# --- TAB 5: SMART GOURMET MEAL PLANNER ---
+with tab5:
     st.subheader("🍴 Gourmet Meal Suggestions")
-    st.caption("Matches your current fridge inventory into complete dishes and missing ingredient ideas.")
+    st.caption("Matches your combined fridge, freezer, and cupboard items into complete dishes.")
 
     if not active_inv:
-        st.info("Your fridge is empty! Add items using the scanner or manual lookup to view meal ideas.")
+        st.info("Your kitchen inventory is empty! Add items using the scanner to view meal ideas.")
     else:
-        ready_meals, missing_meals = analyze_fridge_for_meals(active_inv)
+        ready_meals, missing_meals = analyze_inventory_for_meals(active_inv)
 
         st.markdown("### ✅ Ready-to-Serve Meals & Feasts")
-        st.caption("Complete dishes made using the items currently in your fridge.")
+        st.caption("Complete dishes made using the items currently in your storage zones.")
 
         if not ready_meals:
             st.write(" *No complete multi-ingredient dishes available right now.*")
@@ -994,7 +1066,7 @@ with tab3:
                 <div class="recipe-card recipe-card-ready">
                     <h3 style="color: #10B981; margin: 0 0 8px 0;">{meal['title']}</h3>
                     <p style="margin: 0 0 8px 0; color: #E2E8F0; font-size: 13px;">
-                        <strong>🥦 In Your Fridge:</strong> {', '.join(meal['in_stock'])}
+                        <strong>🥦 In Your Storage:</strong> {', '.join(meal['in_stock'])}
                     </p>
                     <p style="margin: 0; color: #94A3B8; font-size: 12px; font-style: italic;">
                         <strong>Chef's Note:</strong> {meal['instructions']}
@@ -1016,7 +1088,7 @@ with tab3:
                 <div class="recipe-card recipe-card-missing">
                     <h3 style="color: #C5A059; margin: 0 0 8px 0;">{meal['title']}</h3>
                     <p style="margin: 0 0 6px 0; color: #E2E8F0; font-size: 13px;">
-                        <strong>🥦 In Your Fridge:</strong> {', '.join(meal['in_stock'])}
+                        <strong>🥦 In Your Storage:</strong> {', '.join(meal['in_stock'])}
                     </p>
                     <p style="margin: 0 0 10px 0; color: #F59E0B; font-size: 13px; font-weight: 600;">
                         🛒 <strong>What You Need to Buy:</strong> {missing_str}
